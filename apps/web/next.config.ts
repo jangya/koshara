@@ -3,6 +3,8 @@ import type {NextConfig} from 'next';
 const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['@astryxdesign/core', 'lucide-react'],
+    serverActions: {bodySizeLimit: '11mb'},
+    proxyClientMaxBodySize: 11 * 1024 * 1024,
   },
   transpilePackages: ['@koshara/domain', '@koshara/database', '@koshara/ui'],
   poweredByHeader: false,

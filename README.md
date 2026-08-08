@@ -1,8 +1,8 @@
 # Koshara
 
-Koshara is a private household-expense dashboard. Milestone 1 establishes the authenticated, household-isolated foundation: a Clerk Organisation maps to one PostgreSQL household, and members can persist people and personal or joint financial accounts.
+Koshara is a private household-expense dashboard. Milestones 1 and 2 provide an authenticated, household-isolated foundation plus reviewed CSV statement imports: a Clerk Organisation maps to one PostgreSQL household, members manage people/accounts, and bounded CSV files move through explicit mapping, candidate review, duplicate decisions, atomic commit, and complete rollback.
 
-No sample financial data is bundled. CSV, PDF, Gmail, transaction review, dashboards backed by transactions, exports, and deletion are intentionally deferred to their later milestones.
+Committed transactions populate a paginated ledger and currency-safe initial dashboard. No sample financial data is bundled. PDF/R2, Gmail, categorisation, recurring analysis, exports, and deletion remain deferred to their later milestones.
 
 ## Start locally
 
@@ -15,7 +15,7 @@ pnpm db:migrate
 pnpm dev
 ```
 
-Set the five Milestone 1 variables documented in [DEVELOPMENT.md](./DEVELOPMENT.md) before exercising protected pages. The public landing page remains available without credentials so the production build and basic UI can be verified safely.
+Set the five current variables documented in [DEVELOPMENT.md](./DEVELOPMENT.md) before exercising protected pages. The public landing page remains available without credentials so the production build and basic UI can be verified safely.
 
 ## Verification
 

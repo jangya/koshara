@@ -1,17 +1,17 @@
 # Architecture
 
-## Milestone 1 boundary
+## Milestone 2 boundary
 
-Koshara is one Next.js App Router application in a pnpm workspace. It uses Server Components for reads, Server Actions for the three current mutations, Clerk for identity and organisation membership, Drizzle for PostgreSQL access, and Astryx for interface primitives.
+Koshara is one Next.js App Router application in a pnpm workspace. It uses Server Components for reads, Server Actions for authenticated mutations, Clerk for identity and organisation membership, Drizzle for PostgreSQL access, and Astryx for interface primitives.
 
 The packages have deliberately narrow responsibilities:
 
 - `apps/web`: routes, Clerk integration, request authorisation, forms, and the responsive shell.
-- `packages/domain`: dependency-free access rules, input schemas, and financial-domain types.
-- `packages/database`: PostgreSQL schema, migrations, and household-scoped repositories.
+- `packages/domain`: access rules, Zod input schemas, strict CSV parsing/mapping, integer amount conversion, and duplicate classification.
+- `packages/database`: PostgreSQL schema, migrations, household-scoped repositories, import lifecycle transitions, and dashboard queries.
 - `packages/ui`: brand configuration and shared Astryx styles.
 
-Import and storage packages do not exist yet because Milestone 1 has no import or object-storage behaviour.
+No object-storage package exists yet. Milestone 2 stores bounded parsed CSV rows in PostgreSQL JSONB and discards original file bytes; private R2 document storage belongs to Milestone 3.
 
 ## Request and data boundary
 
@@ -24,10 +24,18 @@ Clerk organisation roles map as follows:
 
 The database reinforces application checks. Accounts and account holders use composite foreign keys containing `household_id`, so a person from one household cannot be attached to another household's account even if application validation regresses.
 
+## Import lifecycle
+
+One import session targets one household financial account and moves through `mapping`, `review`, `committed`, then optionally `rolled-back`. Files are parsed before persistence, every file receives an explicit mapping/date format, and mapped rows become candidates. Invalid candidates are excluded; exact and probable duplicates remain pending until an Include/Skip decision is saved.
+
+Session rows are locked for decision, mapping, commit, and rollback transitions. Commit also locks the target account and rechecks auto-included new candidates against current transactions; candidates made stale by another session return to pending duplicate review. Commit inserts included transactions with source-session/source-candidate provenance in one database transaction. Rollback deletes every sourced transaction and updates the session in one transaction while retaining candidate audit data.
+
+Exact duplicates share account, date, integer minor-unit amount, and normalised description. Probable duplicates share account/amount within three calendar days. Dashboard aggregation groups currencies independently.
+
 ## Persistence
 
-The first migration creates `households`, `people`, `financial_accounts`, and `financial_account_people`. Migrations are committed SQL and are append-only once applied to a shared environment. Currency values are ISO-style three-letter codes; account references may only be absent, masked, or last-four values.
+The first migration creates household/account tables. Milestone 2 migrations add import sessions/files/candidates/transactions and composite provenance constraints. Migrations are committed SQL and append-only once applied to a shared environment. Currency values are ISO-style three-letter codes; account references may only be absent, masked, or last-four values.
 
 ## Deferred boundaries
 
-Statement import, R2 document storage, transaction models, categorisation, recurring detection, Gmail OAuth, reporting charts, export, deletion, and production audit operations belong to later milestones. Their environment-variable names are reserved, but no pretend integrations or placeholder data paths have been created.
+PDF/R2 document storage, categorisation, recurring detection, Gmail OAuth, richer reporting, export, deletion, and production audit operations belong to later milestones. Their environment-variable names are reserved, but no pretend integrations or placeholder data paths have been created.
