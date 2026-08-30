@@ -10,6 +10,7 @@ import type {ReactNode} from 'react';
 const navigation = [
   {href: '/dashboard', label: 'Dashboard'},
   {href: '/transactions', label: 'Transactions'},
+  {href: '/statements', label: 'Statements'},
   {href: '/accounts', label: 'Accounts'},
   {href: '/categories', label: 'Categories'},
 ] as const;

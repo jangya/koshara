@@ -28,8 +28,6 @@ import {Suspense, useEffect, useMemo, useState} from 'react';
 import {DateRangeControl, useDateRangeSearchParams} from '@/components/date-range-control';
 import {Page} from '@/components/page';
 import {TransactionDialog} from '@/components/transaction-dialog';
-import {TryWithAiAgent} from '@/components/try-with-ai-agent';
-import {buildTransactionPrompts} from '@/lib/agent-prompts';
 import {formatDateRange, getDateRangePreset, isInDateRange} from '@/lib/date-range';
 import {formatMinorCurrencySummary, formatTransactionDate} from '@/lib/format';
 import {deleteTransaction, updateTransaction, updateTransactions, useKosharaState} from '@/lib/koshara-store';
@@ -237,12 +235,6 @@ function TransactionsContent() {
     view.reviewStatus !== 'all',
     preset !== 'this-month',
   ].filter(Boolean).length;
-  const filterSummary = [
-    view.accountId !== 'all' ? accountName.get(view.accountId) : null,
-    view.categoryId !== 'all' ? categoryById.get(view.categoryId)?.name : null,
-    view.kind !== 'all' ? (view.kind === 'expense' ? 'Expenses' : 'Income') : null,
-    view.reviewStatus === 'needs_review' ? 'Needs review' : null,
-  ].filter(Boolean).join(' · ') || 'No additional filters';
   const period = formatDateRange(range);
 
   return (
@@ -350,13 +342,6 @@ function TransactionsContent() {
             </VStack>
           </Section>
 
-          <TryWithAiAgent prompts={buildTransactionPrompts({
-            period,
-            visibleCount: visible.length,
-            needsReviewCount,
-            selectedCount: selectedKeys.size,
-            filterSummary,
-          })} />
         </VStack>
       </Page>
 

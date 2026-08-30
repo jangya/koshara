@@ -67,6 +67,47 @@ function createId(prefix: string) {
     : `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function importApprovalSelection(session: ImportSession) {
+  const mergedGroups = session.groups.filter((group) => group.resolution === 'merged');
+  const groupedItemIds = new Set(session.groups
+    .filter((group) => group.resolution !== 'separate')
+    .flatMap((group) => group.itemIds));
+  const standaloneItems = session.items
+    .filter((item) => item.included && item.status === 'ready' && !groupedItemIds.has(item.id));
+  const approvedItemIds = new Set([
+    ...standaloneItems.map(({id}) => id),
+    ...mergedGroups.flatMap(({itemIds}) => itemIds),
+  ]);
+  return {mergedGroups, standaloneItems, approvedItemIds};
+}
+
+function sessionAfterApproval(session: ImportSession, approvedTransactionIds: string[]): ImportSession {
+  const {approvedItemIds} = importApprovalSelection(session);
+  const separateGroupIds = new Set(session.groups
+    .filter(({resolution}) => resolution === 'separate')
+    .map(({id}) => id));
+  const remainingItems = session.items
+    .filter(({id}) => !approvedItemIds.has(id))
+    .map((item) => item.groupId && separateGroupIds.has(item.groupId) ? {...item, groupId: undefined} : item);
+  const remainingItemIds = new Set(remainingItems.map(({id}) => id));
+  const remainingGroups = session.groups.flatMap((group) => {
+    if (group.resolution !== 'proposed') return [];
+    const itemIds = group.itemIds.filter((id) => remainingItemIds.has(id));
+    return itemIds.length >= 2 ? [{...group, itemIds}] : [];
+  });
+  const hasPendingReview = remainingItems.some(({status}) => status !== 'skipped');
+
+  return hasPendingReview
+    ? {
+        ...session,
+        status: 'ready_for_review',
+        items: remainingItems,
+        groups: remainingGroups,
+        approvedTransactionIds,
+      }
+    : {...session, status: 'imported', approvedTransactionIds};
+}
+
 function normalizeState(value: KosharaState): KosharaState {
   const categories = [...value.categories];
   const importSessions = Array.isArray(value.importSessions) ? value.importSessions : [];
@@ -95,17 +136,22 @@ function normalizeState(value: KosharaState): KosharaState {
         source: legacy.source === 'webmcp' ? 'agent' : transactionSources.includes(legacy.source as TransactionSource) ? legacy.source as TransactionSource : 'manual',
       };
     }),
-    importSessions: importSessions.map((session) => ({
-      ...session,
-      items: Array.isArray(session.items) ? session.items.map((item) => ({
-        ...item,
-        duplicateTransactionIds: Array.isArray(item.duplicateTransactionIds) ? item.duplicateTransactionIds : [],
-        duplicateApproved: item.duplicateApproved ?? false,
-        sourceReferences: Array.isArray(item.sourceReferences) ? item.sourceReferences : [],
-      })) : [],
-      groups: Array.isArray(session.groups) ? session.groups : [],
-      approvedTransactionIds: Array.isArray(session.approvedTransactionIds) ? session.approvedTransactionIds : [],
-    })),
+    importSessions: importSessions.map((session) => {
+      const normalized: ImportSession = {
+        ...session,
+        items: Array.isArray(session.items) ? session.items.map((item) => ({
+          ...item,
+          duplicateTransactionIds: Array.isArray(item.duplicateTransactionIds) ? item.duplicateTransactionIds : [],
+          duplicateApproved: item.duplicateApproved ?? false,
+          sourceReferences: Array.isArray(item.sourceReferences) ? item.sourceReferences : [],
+        })) : [],
+        groups: Array.isArray(session.groups) ? session.groups : [],
+        approvedTransactionIds: Array.isArray(session.approvedTransactionIds) ? session.approvedTransactionIds : [],
+      };
+      if (normalized.status !== 'imported' || normalized.approvedTransactionIds.length === 0) return normalized;
+      const recovered = sessionAfterApproval(normalized, normalized.approvedTransactionIds);
+      return recovered.status === 'ready_for_review' ? recovered : normalized;
+    }),
   };
 }
 
@@ -553,11 +599,8 @@ export async function approveStatementImport(sessionId: string) {
   await simulateWriteDelay();
   const session = getImportSessionOrThrow(sessionId);
   if (session.status !== 'ready_for_review') throw new Error('This import session is not ready for approval.');
-  const mergedGroups = session.groups.filter((group) => group.resolution === 'merged');
-  const groupedItemIds = new Set(session.groups.filter((group) => group.resolution !== 'separate').flatMap((group) => group.itemIds));
-  const itemInputs = session.items
-    .filter((item) => item.included && item.status === 'ready' && !groupedItemIds.has(item.id))
-    .map(importItemInput);
+  const {mergedGroups, standaloneItems} = importApprovalSelection(session);
+  const itemInputs = standaloneItems.map(importItemInput);
   const groupInputs: TransactionInput[] = mergedGroups.map((group) => ({
     date: session.items.find((item) => group.itemIds.includes(item.id))?.date ?? new Date().toISOString().slice(0, 10),
     description: group.proposedDescription,
@@ -573,7 +616,10 @@ export async function approveStatementImport(sessionId: string) {
   inputs.forEach(assertValidTransaction);
   const createdAt = new Date().toISOString();
   const created = inputs.map((input) => buildTransaction(input, createdAt));
-  const nextSession = {...session, status: 'imported' as const, approvedTransactionIds: created.map(({id}) => id)};
+  const nextSession = sessionAfterApproval(session, [
+    ...session.approvedTransactionIds,
+    ...created.map(({id}) => id),
+  ]);
   commit({
     ...snapshot,
     transactions: [...created, ...snapshot.transactions],

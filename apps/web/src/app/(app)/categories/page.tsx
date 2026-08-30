@@ -14,10 +14,8 @@ import {useState} from 'react';
 
 import {CategoryDialog} from '@/components/category-dialog';
 import {Page} from '@/components/page';
-import {TryWithAiAgent} from '@/components/try-with-ai-agent';
-import {buildCategoryPrompts} from '@/lib/agent-prompts';
 import {getBudgetStatus} from '@/lib/category-rules';
-import {formatDateRange, getDateRangePreset} from '@/lib/date-range';
+import {getDateRangePreset} from '@/lib/date-range';
 import {formatMinorCurrencySummary} from '@/lib/format';
 import {deleteCategory, useKosharaState} from '@/lib/koshara-store';
 import type {Category} from '@/lib/koshara-types';
@@ -34,7 +32,6 @@ export default function CategoriesPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [sortBy, setSortBy] = useState<'spending' | 'usage' | 'name'>('spending');
   const range = currentMonthRange();
-  const period = formatDateRange(range);
   const expenses = state.transactions.filter((transaction) => transaction.kind === 'expense' && transaction.date >= range.start && transaction.date <= range.end);
   const rows = state.categories.map((category) => {
     const spendingMinor = expenses.filter((transaction) => transaction.categoryId === category.id)
@@ -131,7 +128,6 @@ export default function CategoriesPage() {
             </VStack>
             </VStack>
           </Section>
-          <TryWithAiAgent prompts={buildCategoryPrompts(rows.find(({category}) => category.name === 'Dining')?.category.name ?? rows[0]?.category.name ?? 'a spending category', period)} />
         </VStack>
       </Page>
       <CategoryDialog isOpen={editorOpen} onOpenChange={setEditorOpen} category={editing} categories={state.categories} />

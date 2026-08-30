@@ -43,6 +43,34 @@ export function buildCategoryPrompts(categoryName: string, period?: string) {
   ];
 }
 
+export const STATEMENT_IMPORT_PROMPT = 'Import the attached statement into Koshara using the WebMCP tools available on the Statements page. Use existing accounts and categories. Prepare the transactions for review, identify possible duplicates, group related statement rows where appropriate, and do not add anything to my Transactions until I approve the import.';
+
+export function getPageAgentPrompts(pathname: string) {
+  if (pathname === '/dashboard') {
+    return [
+      'Summarize my spending this month and show the categories with the largest changes.',
+      'Which recent transactions may need my attention?',
+    ];
+  }
+  if (pathname === '/transactions' || pathname.startsWith('/transactions/')) {
+    return [
+      'Add a ₹500 dining expense from today to my primary card.',
+      'Find possible duplicate transactions from this month.',
+    ];
+  }
+  if (pathname === '/accounts' || pathname.startsWith('/accounts/')) {
+    return ['List my Koshara accounts and their current balances.'];
+  }
+  if (pathname === '/categories' || pathname.startsWith('/categories/')) {
+    return [
+      'Which categories are closest to their monthly limits?',
+      'Suggest a realistic monthly limit for Dining.',
+    ];
+  }
+  if (pathname === '/statements' || pathname.startsWith('/statements/')) return [STATEMENT_IMPORT_PROMPT];
+  return [];
+}
+
 export async function copyPrompt(prompt: string, writeText: (value: string) => Promise<void> = (value) => navigator.clipboard.writeText(value)) {
   await writeText(prompt);
 }

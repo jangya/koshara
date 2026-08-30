@@ -18,8 +18,6 @@ import {Suspense, useEffect, useMemo, useState} from 'react';
 import {DateRangeControl, useDateRangeSearchParams} from '@/components/date-range-control';
 import {IncomeSpendingChart} from '@/components/income-spending-chart';
 import {Page} from '@/components/page';
-import {TryWithAiAgent} from '@/components/try-with-ai-agent';
-import {buildDashboardPrompts} from '@/lib/agent-prompts';
 import {getBudgetStatus} from '@/lib/category-rules';
 import {aggregateTimeline, formatDateRange, getPreviousPeriod, isInDateRange} from '@/lib/date-range';
 import {compareMetric, summarizeTransactions} from '@/lib/finance-insights';
@@ -251,7 +249,6 @@ function DashboardContent() {
           </VStack>
         </Section>
 
-        <TryWithAiAgent prompts={buildDashboardPrompts(period, summary.needsReviewCount)} />
       </VStack>
     </Page>
   );
