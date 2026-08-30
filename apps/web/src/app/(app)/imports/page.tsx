@@ -8,6 +8,7 @@ import {countImportSessions, listFinancialAccounts, listImportSessions} from '@k
 import type {Metadata} from 'next';
 
 import {ImportUploadForm} from '@/components/forms/import-upload-form';
+import {PdfImportUploadForm} from '@/components/forms/pdf-import-upload-form';
 import {ImportSessionTable} from '@/components/import-session-table';
 import {Page} from '@/components/page';
 import {PaginationControls} from '@/components/pagination-controls';
@@ -33,16 +34,35 @@ export default async function ImportsPage({searchParams}: {searchParams: Promise
   });
 
   return (
-    <Page title="Imports" description="Upload CSV statements, map their columns, and review candidates before committing anything.">
+    <Page title="Imports" description="Upload CSV or PDF statements, map their columns, and review candidates before committing anything.">
       <VStack gap={6}>
         <Section>
           <VStack gap={4}>
             <VStack gap={1}>
-              <Heading level={2}>New CSV import</Heading>
-              <Text color="secondary">Files stay staged in an import session until every duplicate decision is resolved.</Text>
+              <Heading level={2}>New statement import</Heading>
+              <Text color="secondary">Files stay staged in one review pipeline until every duplicate decision is resolved.</Text>
             </VStack>
             {accounts.length > 0 ? (
-              <ImportUploadForm accounts={accounts.map(({id, displayName}) => ({id, displayName}))} />
+              <VStack gap={5}>
+                <Section variant="muted">
+                  <VStack gap={4}>
+                    <VStack gap={1}>
+                      <Heading level={3}>PDF statement</Heading>
+                      <Text color="secondary">Keep the original privately and extract positional fields for mapping.</Text>
+                    </VStack>
+                    <PdfImportUploadForm accounts={accounts.map(({id, displayName}) => ({id, displayName}))} />
+                  </VStack>
+                </Section>
+                <Section variant="muted">
+                  <VStack gap={4}>
+                    <VStack gap={1}>
+                      <Heading level={3}>CSV statement</Heading>
+                      <Text color="secondary">Upload one to five structured comma-delimited files.</Text>
+                    </VStack>
+                    <ImportUploadForm accounts={accounts.map(({id, displayName}) => ({id, displayName}))} />
+                  </VStack>
+                </Section>
+              </VStack>
             ) : (
               <Text color="secondary">
                 Add a <Link href="/accounts">financial account</Link> before importing statements.
@@ -73,7 +93,7 @@ export default async function ImportsPage({searchParams}: {searchParams: Promise
                 />
                 <PaginationControls basePath="/imports" page={page} pageSize={pageSize} totalItems={totalSessions} />
               </>
-            ) : <Text color="secondary">No CSV import sessions have been created.</Text>}
+            ) : <Text color="secondary">No statement import sessions have been created.</Text>}
           </VStack>
         </Section>
       </VStack>

@@ -15,6 +15,7 @@
   "dependencies": {
     "@astryxdesign/core": "0.2.0",
     "@astryxdesign/theme-neutral": "0.2.0",
+    "@aws-sdk/client-s3": "3.1106.0",
     "@clerk/nextjs": "7.6.4",
     "@hookform/resolvers": "5.6.0",
     "@koshara/database": "workspace:*",
@@ -24,6 +25,7 @@
     "@tanstack/react-table": "8.21.3",
     "lucide-react": "1.28.0",
     "next": "16.2.12",
+    "pdfjs-dist": "6.2.108",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hook-form": "7.84.0",

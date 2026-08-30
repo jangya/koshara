@@ -1,6 +1,7 @@
 import {Card} from '@astryxdesign/core/Card';
 import {Grid} from '@astryxdesign/core/Grid';
 import {Heading} from '@astryxdesign/core/Heading';
+import {Link} from '@astryxdesign/core/Link';
 import {Section} from '@astryxdesign/core/Section';
 import {VStack} from '@astryxdesign/core/Stack';
 import {Text} from '@astryxdesign/core/Text';
@@ -12,6 +13,7 @@ import {
   listFinancialAccounts,
   listImportCandidates,
   listImportFiles,
+  listStatementDocuments,
 } from '@koshara/database';
 import type {Metadata} from 'next';
 import {notFound} from 'next/navigation';
@@ -42,9 +44,10 @@ export default async function ImportSessionPage({params, searchParams}: {
 }) {
   const context = await getHouseholdPageContext();
   const {importSessionId} = await params;
-  const [session, files, accounts, totalCandidates, pendingDuplicates] = await Promise.all([
+  const [session, files, documents, accounts, totalCandidates, pendingDuplicates] = await Promise.all([
     getImportSession(getDatabase(), context.householdId, importSessionId),
     listImportFiles(getDatabase(), context.householdId, importSessionId),
+    listStatementDocuments(getDatabase(), context.householdId, importSessionId),
     listFinancialAccounts(getDatabase(), context.householdId),
     countImportCandidates(getDatabase(), context.householdId, importSessionId),
     countPendingImportCandidates(getDatabase(), context.householdId, importSessionId),
@@ -70,6 +73,23 @@ export default async function ImportSessionPage({params, searchParams}: {
       actions={<Token label={presentation.label} color={presentation.color} />}
     >
       <VStack gap={6}>
+        {documents.length > 0 ? (
+          <Section variant="muted">
+            <VStack gap={2}>
+              <Heading level={2}>Private original statement</Heading>
+              {documents.map((document) => (
+                <VStack key={document.id} gap={1}>
+                  <Link href={`/documents/${document.importFileId}`} isStandalone>
+                    Download {document.originalFilename}
+                  </Link>
+                  <Text color="secondary">
+                    {document.pageCount.toLocaleString('en-IN')} page{document.pageCount === 1 ? '' : 's'} · {(document.byteSize / (1024 * 1024)).toFixed(2)} MB · authenticated, no-store access
+                  </Text>
+                </VStack>
+              ))}
+            </VStack>
+          </Section>
+        ) : null}
         {session.status === 'mapping' ? (
           <Section>
             <VStack gap={4}>

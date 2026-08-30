@@ -14,6 +14,9 @@ import {z} from 'zod';
 import {requireHouseholdAccess} from '@/lib/auth';
 import {getDatabase} from '@/lib/database';
 import {CsvUploadValidationError, parseCsvUploadForm} from '@/lib/import-upload';
+import {PdfImportError, parsePdfUploadForm} from '@/lib/pdf-import';
+import {runPdfImportWorkflow, PdfImportWorkflowError} from '@/lib/pdf-import-service';
+import {getPrivateDocumentStorage} from '@/lib/private-document-storage';
 
 export type ImportActionResult = {
   status: 'success' | 'error';
@@ -66,6 +69,37 @@ export async function createCsvImportSessionAction(formData: FormData): Promise<
   }
 }
 
+export async function createPdfImportSessionAction(formData: FormData): Promise<ImportActionResult> {
+  let context: Awaited<ReturnType<typeof requireHouseholdAccess>>;
+  try {
+    context = await requireHouseholdAccess();
+  } catch {
+    return {status: 'error', message: 'The import session could not be created'};
+  }
+
+  try {
+    const upload = await parsePdfUploadForm(formData);
+    const result = await runPdfImportWorkflow({
+      database: getDatabase(),
+      householdId: context.householdId,
+      clerkUserId: context.clerkUserId,
+      upload,
+      storage: getPrivateDocumentStorage(),
+    });
+    revalidatePath('/imports');
+    return {
+      status: 'success',
+      message: 'PDF stored privately and extracted. Map its fields next.',
+      importSessionId: result.importSessionId,
+    };
+  } catch (error) {
+    if (error instanceof PdfImportError || error instanceof PdfImportWorkflowError) {
+      return {status: 'error', message: error.message};
+    }
+    return {status: 'error', message: 'The PDF statement could not be imported'};
+  }
+}
+
 export async function mapCsvImportSessionAction(rawInput: unknown): Promise<ImportActionResult> {
   const parsed = mapSessionSchema.safeParse(rawInput);
   if (!parsed.success) return {status: 'error', message: validationMessage(parsed.error)};
@@ -77,7 +111,7 @@ export async function mapCsvImportSessionAction(rawInput: unknown): Promise<Impo
     revalidatePath(`/imports/${parsed.data.importSessionId}`);
     return {status: 'success', message: 'Columns mapped. Review every candidate before committing.'};
   } catch {
-    return {status: 'error', message: 'The CSV columns could not be mapped'};
+    return {status: 'error', message: 'The statement columns could not be mapped'};
   }
 }
 

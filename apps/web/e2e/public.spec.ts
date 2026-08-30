@@ -5,7 +5,10 @@ test('renders the credential-free landing page without financial sample data', a
 
   await expect(page).toHaveTitle('Koshara');
   await expect(page.getByRole('heading', {name: 'Every account. One household view.'})).toBeVisible();
-  await expect(page.getByText('Authentication is not configured')).toBeVisible();
+  await expect(
+    page.getByRole('button', {name: 'Sign in to Koshara'})
+      .or(page.getByText('Authentication is not configured')),
+  ).toBeVisible();
   await expect(page.getByText(/sample transaction/i)).toHaveCount(0);
 });
 

@@ -130,3 +130,4 @@ export async function listFinancialAccounts(database: KosharaDatabase, household
 }
 
 export * from './import-repositories';
+export * from './gmail-repositories';

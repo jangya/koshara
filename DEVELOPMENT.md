@@ -3,23 +3,35 @@
 ## Prerequisites
 
 - Node.js 22 or newer
-- pnpm 11.9.0
+- pnpm 11.9.0 or newer
 - PostgreSQL (Supabase is the production target)
 - a Clerk development application with Google sign-in and Organisations enabled
+- a private Cloudflare R2 bucket only when exercising the production storage provider
+- a separate Google Cloud web OAuth client with the Gmail API enabled when exercising Gmail discovery
 
-Install dependencies with `pnpm install`. Copy `.env.example` to `apps/web/.env.local` and set:
+Install with `pnpm install`, copy `apps/web/.env.example` to `apps/web/.env.local`, and set the Clerk/application/PostgreSQL values. Local PDF imports use:
 
-- `NEXT_PUBLIC_APP_URL`: local value `http://localhost:3000`
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: Clerk public key
-- `CLERK_SECRET_KEY`: Clerk server key
-- `ALLOWED_USER_EMAILS`: comma-separated exact email addresses
-- `DATABASE_URL`: PostgreSQL connection string; use an SSL connection for hosted databases
+- `DOCUMENT_STORAGE_DRIVER=local`
+- `LOCAL_DOCUMENT_STORAGE_PATH=.local/private-documents`
 
-R2, Google OAuth, Gmail encryption, and cron values are not needed through Milestone 2.
+The relative storage path resolves beneath `apps/web`, is ignored by Git, and must remain outside `public`, source directories, and tracked content. It is development/test-only; the application rejects the local driver when `NODE_ENV=production`. Never put real statements in tracked directories.
+
+To exercise the production-compatible Cloudflare provider, set `DOCUMENT_STORAGE_DRIVER=r2` and configure:
+
+- `R2_ACCOUNT_ID`: 32-character lowercase Cloudflare account ID
+- `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`: bucket-scoped S3 API credentials
+- `R2_BUCKET_NAME`: private bucket name
+- `R2_ENDPOINT`: exact `https://<account-id>.r2.cloudflarestorage.com` endpoint
+
+Manual Gmail discovery additionally requires:
+
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: credentials for a dedicated web OAuth client, separate from Clerk sign-in
+- `GOOGLE_OAUTH_REDIRECT_URI`: exactly `${NEXT_PUBLIC_APP_URL}/gmail/oauth/callback`, also registered exactly in Google Cloud
+- `GMAIL_TOKEN_ENCRYPTION_KEY`: exactly 32 random bytes encoded as canonical base64 (for example, generate once with `openssl rand -base64 32` and store only in the environment secret manager)
+
+Enable the Gmail API and configure the OAuth consent screen to request only `https://www.googleapis.com/auth/gmail.readonly`. Scheduled discovery and `CRON_SECRET` remain unset. Never put real production credentials, codes, tokens, encryption keys, identities, message metadata, or statements in fixtures, tests, screenshots, or logs.
 
 ## Database workflow
-
-Generate a new migration after an intentional schema change:
 
 ```bash
 pnpm db:generate
@@ -35,13 +47,21 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm test:e2e
+pnpm audit --audit-level high
 ```
 
-`pnpm test:e2e` verifies the credential-free landing page in desktop and mobile Chromium. Domain and PGlite tests exercise the synthetic CSV lifecycle. Authenticated household/import browser flows require disposable Clerk testing credentials and a disposable PostgreSQL database; do not use real household identities or financial data in automated tests.
+PGlite integration tests apply every migration and use synthetic rows. PDF/Gmail tests construct synthetic files, provider JSON, tokens, and encrypted envelopes in memory; do not add real statements, mail, identities, passwords, codes, or credentials. The public Playwright suite uses no household identity. Authenticated Gmail automation requires disposable Google, Clerk, and PostgreSQL resources plus either isolated local storage or disposable R2 resources.
 
-## CSV fixtures
+## Import fixtures and limits
 
-Use synthetic UTF-8 comma-delimited files only. A session accepts one to five files for one account. Each file is limited to 2 MB and 5,000 data rows. Supported date formats are `DD/MM/YYYY`, `MM/DD/YYYY`, and `YYYY-MM-DD`; amount cells use a period decimal separator and must not contain currency symbols.
+- CSV: synthetic UTF-8 comma-delimited files only; one to five files, 2 MiB and 5,000 data rows each.
+- PDF: one synthetic text-based file, 10 MiB, 100 pages, 5,000 extracted rows, 100 positional columns, and 15-second extraction limit.
+- Dates: `DD/MM/YYYY`, `MM/DD/YYYY`, or `YYYY-MM-DD` selected explicitly.
+- Amounts: period decimal separator; no embedded currency symbols.
+- Password-protected PDF tests must generate their fixture/password in test code and assert the password never reaches storage/repository inputs or error messages.
+- Gmail discovery: one explicit request per connection per minute, at most 25 matching messages and 50 bounded PDF descriptors; no automatic scheduling or page-token traversal.
+- Gmail attachment bytes: at most 10 MiB decoded, fetched only for manual import, then passed through the same PDF validation/extraction/storage limits above.
 
 ## Astryx workflow
 

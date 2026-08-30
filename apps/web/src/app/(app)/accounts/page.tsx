@@ -1,78 +1,117 @@
-import {Divider} from '@astryxdesign/core/Divider';
+'use client';
+
+import {AlertDialog} from '@astryxdesign/core/AlertDialog';
+import {Button} from '@astryxdesign/core/Button';
+import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {Heading} from '@astryxdesign/core/Heading';
 import {Item} from '@astryxdesign/core/Item';
 import {Section} from '@astryxdesign/core/Section';
-import {VStack} from '@astryxdesign/core/Stack';
+import {HStack, StackItem, VStack} from '@astryxdesign/core/Stack';
 import {Text} from '@astryxdesign/core/Text';
-import {listFinancialAccounts, listPeople} from '@koshara/database';
-import type {Metadata} from 'next';
+import {useState} from 'react';
 
-import {AccountForm} from '@/components/forms/account-form';
-import {PersonForm} from '@/components/forms/person-form';
+import {AccountDialog} from '@/components/account-dialog';
 import {Page} from '@/components/page';
-import {getDatabase} from '@/lib/database';
-import {getHouseholdPageContext} from '@/lib/page-access';
+import {deleteAccount, useKosharaState} from '@/lib/koshara-store';
+import type {Account, AccountType} from '@/lib/koshara-types';
 
-export const metadata: Metadata = {title: 'Accounts'};
+const accountTypeLabels: Record<AccountType, string> = {
+  bank: 'Bank Account',
+  'credit-card': 'Credit Card',
+  cash: 'Cash',
+  wallet: 'Wallet',
+  other: 'Other',
+};
 
-export default async function AccountsPage() {
-  const context = await getHouseholdPageContext();
-  const [people, accounts] = await Promise.all([
-    listPeople(getDatabase(), context.householdId),
-    listFinancialAccounts(getDatabase(), context.householdId),
-  ]);
+function accountDescription(account: Account) {
+  return [accountTypeLabels[account.type], account.institution, account.lastFour ? `•••• ${account.lastFour}` : null].filter(Boolean).join(' · ');
+}
+
+export default function AccountsPage() {
+  const state = useKosharaState();
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editing, setEditing] = useState<Account | null>(null);
+  const [deleting, setDeleting] = useState<Account | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const linkedTransactionCount = deleting
+    ? state.transactions.filter((transaction) => transaction.accountId === deleting.id).length
+    : 0;
+
+  function openCreate() {
+    setEditing(null);
+    setEditorOpen(true);
+  }
+
+  function openEdit(account: Account) {
+    setEditing(account);
+    setEditorOpen(true);
+  }
 
   return (
-    <Page title="Accounts" description="Track personal and joint accounts without storing complete account numbers.">
-      <VStack gap={6}>
-        <Section>
-          <VStack gap={4}>
-            <VStack gap={1}>
-              <Heading level={2}>Household people</Heading>
-              <Text color="secondary">People may be signed-in members, dependents, or anyone whose expenses are tracked.</Text>
-            </VStack>
-            <VStack as="ul" gap={0}>
-              {people.map((person) => (
-                <Item
-                  as="li"
-                  key={person.id}
-                  label={person.displayName}
-                  description={person.linkedClerkUserId ? 'Linked household member' : person.type}
-                  density="balanced"
-                />
-              ))}
-            </VStack>
-            <Divider />
-            <PersonForm />
-          </VStack>
-        </Section>
-        <Section>
-          <VStack gap={4}>
-            <VStack gap={1}>
-              <Heading level={2}>Financial accounts</Heading>
-              <Text color="secondary">Only names, currency, ownership and optional masked references are stored.</Text>
-            </VStack>
-            {accounts.length > 0 ? (
+    <>
+      <Page
+        title="Accounts"
+        description="Accounts used to identify where each transaction belongs."
+        actions={<Button label="Add account" variant="primary" onClick={openCreate} />}
+      >
+        <Section padding={0}>
+          <VStack gap={0}>
+            <HStack gap={3} padding={4} vAlign="center">
+              <StackItem size="fill"><Heading level={2}>All accounts</Heading></StackItem>
+              <Text type="supporting" color="secondary">{state.accounts.length} accounts</Text>
+            </HStack>
+            {state.accounts.length > 0 ? (
               <VStack as="ul" gap={0}>
-                {accounts.map((account) => (
+                {state.accounts.map((account) => (
                   <Item
                     as="li"
                     key={account.id}
-                    label={account.displayName}
-                    description={`${account.institutionName} · ${account.accountType} · ${account.currency}`}
-                    endContent={account.joint ? 'Joint' : 'Personal'}
-                    density="balanced"
+                    label={account.name}
+                    description={accountDescription(account)}
+                    endContent={
+                      <HStack gap={1}>
+                        <Button label="Edit" variant="ghost" size="sm" onClick={() => openEdit(account)} />
+                        <Button label="Delete" variant="ghost" size="sm" onClick={() => setDeleting(account)} />
+                      </HStack>
+                    }
+                    density="spacious"
                   />
                 ))}
               </VStack>
             ) : (
-              <Text color="secondary">No financial accounts have been added.</Text>
+              <Section variant="transparent" minHeight="20rem">
+                <EmptyState
+                  title="No accounts yet"
+                  description="Add an account before recording a transaction."
+                  actions={<Button label="Add account" variant="primary" onClick={openCreate} />}
+                  headingLevel={2}
+                />
+              </Section>
             )}
-            <Divider />
-            <AccountForm people={people.map(({id, displayName}) => ({id, displayName}))} />
           </VStack>
         </Section>
-      </VStack>
-    </Page>
+      </Page>
+      <AccountDialog isOpen={editorOpen} onOpenChange={setEditorOpen} account={editing} />
+      <AlertDialog
+        isOpen={Boolean(deleting)}
+        onOpenChange={(open) => !open && !isDeleting && setDeleting(null)}
+        title="Delete account?"
+        description={deleting
+          ? `${deleting.name} and ${linkedTransactionCount} linked ${linkedTransactionCount === 1 ? 'transaction' : 'transactions'} will be removed from Koshara on this device.`
+          : 'This account and its linked transactions will be removed.'}
+        actionLabel="Delete account"
+        isActionLoading={isDeleting}
+        onAction={async () => {
+          if (!deleting) return;
+          setIsDeleting(true);
+          try {
+            await deleteAccount(deleting.id);
+            setDeleting(null);
+          } finally {
+            setIsDeleting(false);
+          }
+        }}
+      />
+    </>
   );
 }

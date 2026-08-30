@@ -10,17 +10,35 @@ import {and, asc, desc, eq, gte, inArray, ne, sql} from 'drizzle-orm';
 import type {KosharaDatabase} from './client';
 import {
   financialAccounts,
+  gmailAttachments,
   households,
   importCandidates,
   importFiles,
   importSessions,
+  statementDocuments,
   transactions,
 } from './schema';
+
+type CsvImportSessionFile = {sourceType?: 'csv'; originalFilename: string; parsedCsv: ParsedCsv};
+type PdfImportSessionFile = {
+  sourceType: 'pdf';
+  originalFilename: string;
+  parsedCsv: ParsedCsv;
+  document: {
+    objectKey: string;
+    contentType: 'application/pdf';
+    byteSize: number;
+    checksumSha256: string;
+    pageCount: number;
+    extractedTextBytes: number;
+    gmailAttachmentId?: string;
+  };
+};
 
 export type CreateImportSessionInput = {
   financialAccountId: string;
   createdByClerkUserId: string;
-  files: Array<{originalFilename: string; parsedCsv: ParsedCsv}>;
+  files: Array<CsvImportSessionFile | PdfImportSessionFile>;
 };
 
 export type ImportFileMappingInput = {fileId: string; mapping: CsvColumnMapping};
@@ -42,7 +60,28 @@ export async function createImportSession(
   const totalRows = input.files.reduce((total, file) => total + file.parsedCsv.rows.length, 0);
   if (totalRows === 0 || totalRows > 25_000) throw new Error('An import requires between one and 25,000 rows');
   if (input.files.some((file) => file.originalFilename.length === 0 || file.originalFilename.length > 255)) {
-    throw new Error('CSV filenames must be between one and 255 characters');
+    throw new Error('Import filenames must be between one and 255 characters');
+  }
+  const pdfFiles = input.files.filter((file): file is PdfImportSessionFile => file.sourceType === 'pdf');
+  if (pdfFiles.length > 0 && (pdfFiles.length !== 1 || input.files.length !== 1)) {
+    throw new Error('A PDF import requires exactly one statement document');
+  }
+  for (const file of pdfFiles) {
+    const expectedPrefix = `households/${householdId}/statements/`;
+    if (
+      !file.document.objectKey.startsWith(expectedPrefix)
+      || !/^households\/[0-9a-f-]{36}\/statements\/[0-9a-f-]{36}\.pdf$/u.test(file.document.objectKey)
+    ) throw new Error('The statement object key is outside the household prefix');
+    if (
+      file.document.contentType !== 'application/pdf'
+      || file.document.byteSize < 1
+      || file.document.byteSize > 10 * 1024 * 1024
+      || !/^[0-9a-f]{64}$/u.test(file.document.checksumSha256)
+      || file.document.pageCount < 1
+      || file.document.pageCount > 100
+      || file.document.extractedTextBytes < 1
+      || file.document.extractedTextBytes > 2 * 1024 * 1024
+    ) throw new Error('The statement document metadata is invalid');
   }
 
   const account = await database.query.financialAccounts.findFirst({
@@ -76,14 +115,42 @@ export async function createImportSession(
     }).returning();
     if (!session) throw new Error('Import session could not be created');
 
-    await transaction.insert(importFiles).values(input.files.map((file) => ({
-      householdId,
-      importSessionId: session.id,
-      originalFilename: file.originalFilename,
-      headers: file.parsedCsv.headers,
-      rows: file.parsedCsv.rows,
-      rowCount: file.parsedCsv.rows.length,
-    })));
+    for (const file of input.files) {
+      const [importFile] = await transaction.insert(importFiles).values({
+        householdId,
+        importSessionId: session.id,
+        sourceType: file.sourceType ?? 'csv',
+        originalFilename: file.originalFilename,
+        headers: file.parsedCsv.headers,
+        rows: file.parsedCsv.rows,
+        rowCount: file.parsedCsv.rows.length,
+      }).returning({id: importFiles.id});
+      if (!importFile) throw new Error('Import file could not be created');
+      if (file.sourceType === 'pdf') {
+        const {gmailAttachmentId, ...documentMetadata} = file.document;
+        await transaction.insert(statementDocuments).values({
+          householdId,
+          importSessionId: session.id,
+          importFileId: importFile.id,
+          ...documentMetadata,
+        });
+        if (gmailAttachmentId) {
+          const [linkedAttachment] = await transaction.update(gmailAttachments).set({
+            status: 'imported',
+            claimedByClerkUserId: null,
+            claimedAt: null,
+            importSessionId: session.id,
+            updatedAt: new Date(),
+          }).where(and(
+            eq(gmailAttachments.householdId, householdId),
+            eq(gmailAttachments.id, gmailAttachmentId),
+            eq(gmailAttachments.status, 'importing'),
+            eq(gmailAttachments.claimedByClerkUserId, input.createdByClerkUserId),
+          )).returning({id: gmailAttachments.id});
+          if (!linkedAttachment) throw new Error('The Gmail attachment import claim was not found');
+        }
+      }
+    }
     return session;
   });
 }
@@ -138,6 +205,42 @@ export async function listImportFiles(database: KosharaDatabase, householdId: st
     .from(importFiles)
     .where(and(eq(importFiles.householdId, householdId), eq(importFiles.importSessionId, importSessionId)))
     .orderBy(asc(importFiles.createdAt), asc(importFiles.id));
+}
+
+export async function getStatementDocument(database: KosharaDatabase, householdId: string, importFileId: string) {
+  const document = await database.query.statementDocuments.findFirst({
+    where: and(
+      eq(statementDocuments.householdId, householdId),
+      eq(statementDocuments.importFileId, importFileId),
+    ),
+  });
+  if (!document) return undefined;
+  const file = await database.query.importFiles.findFirst({
+    columns: {originalFilename: true},
+    where: and(
+      eq(importFiles.householdId, householdId),
+      eq(importFiles.id, importFileId),
+    ),
+  });
+  return file ? {...document, originalFilename: file.originalFilename} : undefined;
+}
+
+export async function listStatementDocuments(database: KosharaDatabase, householdId: string, importSessionId: string) {
+  return database.select({
+    id: statementDocuments.id,
+    importFileId: statementDocuments.importFileId,
+    originalFilename: importFiles.originalFilename,
+    byteSize: statementDocuments.byteSize,
+    checksumSha256: statementDocuments.checksumSha256,
+    pageCount: statementDocuments.pageCount,
+  }).from(statementDocuments).innerJoin(importFiles, and(
+    eq(importFiles.householdId, statementDocuments.householdId),
+    eq(importFiles.importSessionId, statementDocuments.importSessionId),
+    eq(importFiles.id, statementDocuments.importFileId),
+  )).where(and(
+    eq(statementDocuments.householdId, householdId),
+    eq(statementDocuments.importSessionId, importSessionId),
+  )).orderBy(asc(importFiles.createdAt), asc(importFiles.id));
 }
 
 export async function listImportCandidates(
