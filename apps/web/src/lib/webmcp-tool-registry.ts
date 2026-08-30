@@ -3,12 +3,16 @@ import {
   createCategory,
   createTransaction,
   createTransactions,
+  createStatementImportSession,
   deleteAccount,
   deleteCategory,
   deleteTransaction,
   getKosharaState,
+  groupStatementImportItems,
+  stageImportTransactions,
   updateAccount,
   updateCategory,
+  updateStatementImportItem,
   updateTransaction,
   validateTransaction,
 } from './koshara-store';
@@ -18,6 +22,7 @@ import type {
   AccountType,
   Category,
   CategoryInput,
+  ImportSession,
   ReviewStatus,
   Transaction,
   TransactionInput,
@@ -196,6 +201,35 @@ function proposedTransactionResult(candidate: TransactionInput) {
     reviewStatus: candidate.reviewStatus,
     source: candidate.source,
     confidence: candidate.confidence,
+  };
+}
+
+function importSessionResult(session: ImportSession) {
+  return {
+    id: session.id,
+    createdAt: session.createdAt,
+    sourceName: session.sourceName,
+    accountId: session.accountId,
+    status: session.status,
+    summary: {
+      total: session.items.length,
+      ready: session.items.filter(({status}) => status === 'ready').length,
+      needsAttention: session.items.filter(({status}) => status === 'needs_attention').length,
+      possibleDuplicates: session.items.filter(({status}) => status === 'possible_duplicate').length,
+      skipped: session.items.filter(({status}) => status === 'skipped').length,
+      suggestedGroups: session.groups.filter(({resolution}) => resolution === 'proposed').length,
+    },
+    items: session.items.map((item) => ({
+      ...item,
+      amount: item.amountMinor / 100,
+      amountMinor: undefined,
+    })),
+    groups: session.groups.map((group) => ({
+      ...group,
+      proposedAmount: group.proposedAmountMinor / 100,
+      proposedAmountMinor: undefined,
+    })),
+    approvedTransactionIds: session.approvedTransactionIds,
   };
 }
 
@@ -610,6 +644,128 @@ export const KOSHARA_WEBMCP_TOOLS: WebMCPTool[] = [
     execute: async (args) => transactionResult(await deleteTransaction(requiredString(args, 'id'))),
   },
   {
+    name: 'get_import_context',
+    description: 'Return the accounts, categories, recent transaction reference data, and active staged import in one call. Use this once before preparing a statement so you can reuse existing finance structures and identify possible duplicates.',
+    inputSchema: emptySchema,
+    annotations: readOnly,
+    execute: () => {
+      const state = getKosharaState();
+      const activeSession = state.importSessions.find(({status}) => status === 'draft' || status === 'ready_for_review');
+      return {
+        currency: 'INR',
+        accounts: state.accounts.map(accountResult),
+        categories: state.categories.map(categoryResult),
+        recentTransactions: [...state.transactions]
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .slice(0, 100)
+          .map(transactionResult),
+        activeImportSession: activeSession ? importSessionResult(activeSession) : null,
+      };
+    },
+  },
+  {
+    name: 'create_import_session',
+    description: 'Create a temporary statement import workspace. This does not add anything to Transactions. Reuse the returned session ID when staging rows or proposing groups.',
+    inputSchema: {
+      type: 'object',
+      properties: {sourceName: {type: 'string'}, accountId: {type: 'string'}},
+      required: ['sourceName'],
+      additionalProperties: false,
+    },
+    annotations: mutating,
+    execute: async (args) => importSessionResult(await createStatementImportSession({
+      sourceName: requiredString(args, 'sourceName'),
+      accountId: optionalString(args, 'accountId'),
+    })),
+  },
+  {
+    name: 'stage_transactions',
+    description: 'Add a prepared transaction batch to a temporary import session for human review. This never creates live Koshara Transactions; uncertain and duplicate rows are excluded by default.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: {type: 'string'},
+        transactions: {type: 'array', items: proposedTransactionSchema, minItems: 1, maxItems: 200},
+      },
+      required: ['sessionId', 'transactions'],
+      additionalProperties: false,
+    },
+    annotations: mutating,
+    execute: async (args) => {
+      const candidates = transactionBatch(args).map((value, index) => {
+        const parsed = parseProposedTransaction(value);
+        if (!parsed.candidate) throw new Error(`Transaction ${index + 1} is invalid: ${parsed.errors?.map(({message}) => message).join(' ')}`);
+        return parsed.candidate;
+      });
+      return importSessionResult(await stageImportTransactions(requiredString(args, 'sessionId'), candidates));
+    },
+  },
+  {
+    name: 'update_import_item',
+    description: 'Adjust one staged row without creating a live transaction. Use it to improve the proposed description, account, category, note, or skip decision. Suspected duplicate overrides remain a human-only action in the Statements review UI.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: {type: 'string'},
+        itemId: {type: 'string'},
+        description: {type: 'string'},
+        accountId: {type: 'string'},
+        categoryId: {type: 'string'},
+        note: {type: 'string'},
+        status: {type: 'string', enum: ['skipped']},
+      },
+      required: ['sessionId', 'itemId'],
+      additionalProperties: false,
+    },
+    annotations: mutating,
+    execute: async (args) => {
+      const updates: Parameters<typeof updateStatementImportItem>[2] = {};
+      if (typeof args.description === 'string') updates.description = args.description;
+      if (typeof args.accountId === 'string') updates.proposedAccountId = args.accountId;
+      if (typeof args.categoryId === 'string') updates.proposedCategoryId = args.categoryId;
+      if (typeof args.note === 'string') updates.note = args.note;
+      if (args.status === 'skipped') updates.status = 'skipped';
+      return updateStatementImportItem(requiredString(args, 'sessionId'), requiredString(args, 'itemId'), updates);
+    },
+  },
+  {
+    name: 'group_import_items',
+    description: 'Propose that two or more statement rows represent one logical expense, such as EMI principal, interest, and tax. The group remains a suggestion until the human chooses Merge or Keep separate in Koshara.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: {type: 'string'},
+        itemIds: {type: 'array', items: {type: 'string'}, minItems: 2},
+        label: {type: 'string'},
+        description: {type: 'string'},
+        categoryId: {type: 'string'},
+      },
+      required: ['sessionId', 'itemIds', 'label'],
+      additionalProperties: false,
+    },
+    annotations: mutating,
+    execute: async (args) => {
+      if (!Array.isArray(args.itemIds) || args.itemIds.some((id) => typeof id !== 'string')) throw new Error('itemIds must be an array of strings.');
+      return groupStatementImportItems(requiredString(args, 'sessionId'), {
+        itemIds: args.itemIds as string[],
+        label: requiredString(args, 'label'),
+        description: optionalString(args, 'description'),
+        categoryId: optionalString(args, 'categoryId'),
+      });
+    },
+  },
+  {
+    name: 'get_import_session',
+    description: 'Return the current staged rows, review statuses, duplicate references, and proposed groups for one import session. This is read-only.',
+    inputSchema: {type: 'object', properties: {sessionId: {type: 'string'}}, required: ['sessionId'], additionalProperties: false},
+    annotations: readOnly,
+    execute: (args) => {
+      const session = getKosharaState().importSessions.find(({id}) => id === requiredString(args, 'sessionId'));
+      if (!session) throw new Error('Import session not found.');
+      return importSessionResult(session);
+    },
+  },
+  {
     name: 'get_spending_summary',
     description: 'Return structured expense totals from Koshara for a date range, optionally filtered by account or category. Use this data for external reasoning; Koshara does not generate AI insights.',
     inputSchema: {
@@ -648,3 +804,51 @@ export const KOSHARA_WEBMCP_TOOLS: WebMCPTool[] = [
     },
   },
 ];
+
+export interface WebMCPPageContext {
+  label: string;
+  groups: Array<{label: string; names: string[]}>;
+  tools: WebMCPTool[];
+}
+
+const pageContexts: Array<{matches: (pathname: string) => boolean; label: string; groups: Array<{label: string; names: string[]}>}> = [
+  {
+    matches: (pathname) => pathname === '/dashboard',
+    label: 'Dashboard',
+    groups: [{label: 'Dashboard insights', names: ['get_spending_summary', 'search_transactions', 'get_accounts', 'list_categories']}],
+  },
+  {
+    matches: (pathname) => pathname === '/transactions' || pathname.startsWith('/transactions/'),
+    label: 'Transactions',
+    groups: [{label: 'Transactions', names: ['search_transactions', 'get_transaction', 'create_transaction', 'update_transaction', 'delete_transaction']}],
+  },
+  {
+    matches: (pathname) => pathname === '/accounts' || pathname.startsWith('/accounts/'),
+    label: 'Accounts',
+    groups: [{label: 'Accounts', names: ['get_accounts', 'create_account', 'update_account', 'delete_account']}],
+  },
+  {
+    matches: (pathname) => pathname === '/categories' || pathname.startsWith('/categories/'),
+    label: 'Categories',
+    groups: [{label: 'Categories', names: ['list_categories', 'create_category', 'update_category', 'delete_category']}],
+  },
+  {
+    matches: (pathname) => pathname === '/statements' || pathname.startsWith('/statements/'),
+    label: 'Statements',
+    groups: [
+      {label: 'Statement context', names: ['get_import_context', 'check_transactions']},
+      {label: 'Staged review', names: ['create_import_session', 'stage_transactions', 'update_import_item', 'group_import_items', 'get_import_session']},
+    ],
+  },
+];
+
+export function getWebMCPPageContext(pathname: string): WebMCPPageContext | null {
+  const context = pageContexts.find(({matches}) => matches(pathname));
+  if (!context) return null;
+  const names = new Set(context.groups.flatMap((group) => group.names));
+  return {
+    label: context.label,
+    groups: context.groups,
+    tools: KOSHARA_WEBMCP_TOOLS.filter(({name}) => names.has(name)),
+  };
+}

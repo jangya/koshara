@@ -3,6 +3,9 @@ export type TransactionKind = 'expense' | 'income';
 export type ReviewStatus = 'confirmed' | 'needs_review';
 export type TransactionSource = 'demo' | 'manual' | 'agent';
 export type CategoryColor = 'blue' | 'cyan' | 'green' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'yellow';
+export type ImportSessionStatus = 'draft' | 'ready_for_review' | 'imported' | 'cancelled';
+export type ImportItemStatus = 'ready' | 'needs_attention' | 'possible_duplicate' | 'skipped';
+export type ImportGroupResolution = 'proposed' | 'merged' | 'separate';
 
 export interface Account {
   id: string;
@@ -37,10 +40,52 @@ export interface Transaction {
   createdAt: string;
 }
 
+export interface ImportItem {
+  id: string;
+  importSessionId: string;
+  date: string;
+  description: string;
+  amountMinor: number;
+  kind: TransactionKind;
+  proposedAccountId: string;
+  proposedCategoryId: string;
+  status: ImportItemStatus;
+  included: boolean;
+  note: string;
+  confidence?: number;
+  duplicateTransactionIds: string[];
+  duplicateApproved: boolean;
+  sourceReferences: string[];
+  groupId?: string;
+}
+
+export interface ImportGroup {
+  id: string;
+  label: string;
+  itemIds: string[];
+  proposedDescription: string;
+  proposedAmountMinor: number;
+  proposedAccountId: string;
+  proposedCategoryId: string;
+  resolution: ImportGroupResolution;
+}
+
+export interface ImportSession {
+  id: string;
+  createdAt: string;
+  sourceName: string;
+  accountId?: string;
+  status: ImportSessionStatus;
+  items: ImportItem[];
+  groups: ImportGroup[];
+  approvedTransactionIds: string[];
+}
+
 export interface KosharaState {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
+  importSessions: ImportSession[];
 }
 
 export interface TransactionInput {

@@ -11,6 +11,10 @@ import type {
   Category,
   CategoryColor,
   CategoryInput,
+  ImportGroup,
+  ImportGroupResolution,
+  ImportItem,
+  ImportSession,
   KosharaState,
   ReviewStatus,
   Transaction,
@@ -65,6 +69,7 @@ function createId(prefix: string) {
 
 function normalizeState(value: KosharaState): KosharaState {
   const categories = [...value.categories];
+  const importSessions = Array.isArray(value.importSessions) ? value.importSessions : [];
   demoCategories.forEach((seeded) => {
     if (!categories.some((category) => category.id === seeded.id)) categories.push({...seeded});
   });
@@ -90,6 +95,17 @@ function normalizeState(value: KosharaState): KosharaState {
         source: legacy.source === 'webmcp' ? 'agent' : transactionSources.includes(legacy.source as TransactionSource) ? legacy.source as TransactionSource : 'manual',
       };
     }),
+    importSessions: importSessions.map((session) => ({
+      ...session,
+      items: Array.isArray(session.items) ? session.items.map((item) => ({
+        ...item,
+        duplicateTransactionIds: Array.isArray(item.duplicateTransactionIds) ? item.duplicateTransactionIds : [],
+        duplicateApproved: item.duplicateApproved ?? false,
+        sourceReferences: Array.isArray(item.sourceReferences) ? item.sourceReferences : [],
+      })) : [],
+      groups: Array.isArray(session.groups) ? session.groups : [],
+      approvedTransactionIds: Array.isArray(session.approvedTransactionIds) ? session.approvedTransactionIds : [],
+    })),
   };
 }
 
@@ -344,4 +360,224 @@ export async function deleteCategory(id: string) {
       : transaction),
   });
   return {category, reassignedTransactionCount, fallbackCategoryId: fallback.id};
+}
+
+function normalizedDescription(value: string) {
+  return value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+function descriptionsAreSimilar(left: string, right: string) {
+  const a = normalizedDescription(left);
+  const b = normalizedDescription(right);
+  if (!a || !b) return false;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+  const aWords = new Set(a.split(' ').filter((word) => word.length > 2));
+  const bWords = new Set(b.split(' ').filter((word) => word.length > 2));
+  const shared = [...aWords].filter((word) => bWords.has(word)).length;
+  return shared > 0 && shared / Math.max(aWords.size, bWords.size) >= 0.5;
+}
+
+function possibleDuplicateIds(candidate: Pick<TransactionInput, 'date' | 'description' | 'amountMinor' | 'accountId'>) {
+  return snapshot.transactions.flatMap((transaction) => {
+    const daysApart = Math.abs(new Date(`${transaction.date}T00:00:00Z`).getTime() - new Date(`${candidate.date}T00:00:00Z`).getTime()) / 86_400_000;
+    return transaction.accountId === candidate.accountId
+      && transaction.amountMinor === candidate.amountMinor
+      && daysApart <= 3
+      && descriptionsAreSimilar(transaction.description, candidate.description)
+      ? [transaction.id]
+      : [];
+  });
+}
+
+function getImportSessionOrThrow(id: string) {
+  const session = snapshot.importSessions.find((candidate) => candidate.id === id);
+  if (!session) throw new Error('Import session not found.');
+  return session;
+}
+
+function replaceImportSession(next: ImportSession) {
+  commit({
+    ...snapshot,
+    importSessions: snapshot.importSessions.map((session) => session.id === next.id ? next : session),
+  });
+}
+
+function importItemInput(item: ImportItem): TransactionInput {
+  return {
+    date: item.date,
+    description: item.description,
+    amountMinor: item.amountMinor,
+    kind: item.kind,
+    accountId: item.proposedAccountId,
+    categoryId: item.proposedCategoryId,
+    notes: item.note,
+    reviewStatus: item.proposedCategoryId === 'uncategorized' ? 'needs_review' : 'confirmed',
+    source: 'agent',
+    confidence: item.confidence,
+  };
+}
+
+function deriveImportItem(item: ImportItem, options?: {restore?: boolean; duplicateOverride?: boolean}) {
+  if (item.status === 'skipped' && !options?.restore) return {...item, included: false};
+  const duplicateOverride = options?.duplicateOverride ?? item.duplicateApproved;
+  if (item.duplicateTransactionIds.length > 0 && !duplicateOverride) {
+    return {...item, duplicateApproved: false, status: 'possible_duplicate' as const, included: false};
+  }
+  const validation = validateTransaction(importItemInput(item));
+  if (!validation.valid || item.proposedCategoryId === 'uncategorized') {
+    return {
+      ...item,
+      status: 'needs_attention' as const,
+      included: false,
+      note: validation.valid ? item.note : validation.errors.map(({message}) => message).join(' '),
+    };
+  }
+  return {...item, duplicateApproved: duplicateOverride, status: 'ready' as const, included: true};
+}
+
+export async function createStatementImportSession(input: {sourceName: string; accountId?: string}) {
+  await simulateWriteDelay();
+  if (!input.sourceName.trim()) throw new Error('Source name is required.');
+  if (input.accountId && !snapshot.accounts.some((account) => account.id === input.accountId)) throw new Error('Account not found.');
+  const activeSession = snapshot.importSessions.find(({status}) => status === 'draft' || status === 'ready_for_review');
+  if (activeSession) return activeSession;
+  const session: ImportSession = {
+    id: createId('import'),
+    createdAt: new Date().toISOString(),
+    sourceName: input.sourceName.trim(),
+    accountId: input.accountId,
+    status: 'draft',
+    items: [],
+    groups: [],
+    approvedTransactionIds: [],
+  };
+  commit({...snapshot, importSessions: [session, ...snapshot.importSessions]});
+  return session;
+}
+
+export async function stageImportTransactions(sessionId: string, inputs: TransactionInput[]) {
+  await simulateWriteDelay();
+  const session = getImportSessionOrThrow(sessionId);
+  if (session.status === 'imported' || session.status === 'cancelled') throw new Error('This import session can no longer be changed.');
+  if (inputs.length === 0) throw new Error('Add at least one proposed transaction.');
+
+  const items = inputs.map((input): ImportItem => {
+    const duplicateTransactionIds = possibleDuplicateIds(input);
+    const initial: ImportItem = {
+      id: createId('import-item'),
+      importSessionId: session.id,
+      date: input.date,
+      description: input.description.trim(),
+      amountMinor: input.amountMinor,
+      kind: input.kind,
+      proposedAccountId: input.accountId,
+      proposedCategoryId: input.categoryId,
+      status: 'ready',
+      included: true,
+      note: input.notes?.trim() ?? '',
+      confidence: input.confidence,
+      duplicateTransactionIds,
+      duplicateApproved: false,
+      sourceReferences: [],
+    };
+    if (input.reviewStatus === 'needs_review') return {...initial, status: 'needs_attention', included: false};
+    return deriveImportItem(initial);
+  });
+  const next = {...session, status: 'ready_for_review' as const, items: [...session.items, ...items]};
+  replaceImportSession(next);
+  return next;
+}
+
+export async function updateStatementImportItem(sessionId: string, itemId: string, updates: Partial<Pick<ImportItem, 'description' | 'proposedAccountId' | 'proposedCategoryId' | 'note' | 'status'>> & {includeDuplicate?: boolean}) {
+  await simulateWriteDelay();
+  const session = getImportSessionOrThrow(sessionId);
+  if (session.status !== 'ready_for_review') throw new Error('This import session is not open for review.');
+  const current = session.items.find((item) => item.id === itemId);
+  if (!current) throw new Error('Import item not found.');
+  const {includeDuplicate, ...itemUpdates} = updates;
+  const edited = {...current, ...itemUpdates};
+  const nextItem = itemUpdates.status === 'skipped'
+    ? {...edited, status: 'skipped' as const, included: false}
+    : deriveImportItem(edited, {restore: current.status === 'skipped', duplicateOverride: includeDuplicate});
+  const next = {...session, items: session.items.map((item) => item.id === itemId ? nextItem : item)};
+  replaceImportSession(next);
+  return nextItem;
+}
+
+export async function groupStatementImportItems(sessionId: string, input: {itemIds: string[]; label: string; description?: string; categoryId?: string}) {
+  await simulateWriteDelay();
+  const session = getImportSessionOrThrow(sessionId);
+  if (session.status !== 'ready_for_review') throw new Error('This import session is not open for review.');
+  const itemIds = [...new Set(input.itemIds)];
+  const items = itemIds.map((id) => session.items.find((item) => item.id === id));
+  if (items.length < 2 || items.some((item) => !item)) throw new Error('Choose at least two valid import items to group.');
+  const resolvedItems = items as ImportItem[];
+  if (resolvedItems.some((item) => item.groupId)) throw new Error('One or more import items already belong to a proposed group.');
+  const group: ImportGroup = {
+    id: createId('import-group'),
+    label: input.label.trim() || 'Suggested group',
+    itemIds,
+    proposedDescription: input.description?.trim() || input.label.trim() || resolvedItems[0]!.description,
+    proposedAmountMinor: resolvedItems.reduce((sum, item) => sum + item.amountMinor, 0),
+    proposedAccountId: resolvedItems[0]!.proposedAccountId,
+    proposedCategoryId: input.categoryId || resolvedItems[0]!.proposedCategoryId,
+    resolution: 'proposed',
+  };
+  const next = {
+    ...session,
+    groups: [...session.groups, group],
+    items: session.items.map((item) => itemIds.includes(item.id) ? {...item, groupId: group.id, included: false} : item),
+  };
+  replaceImportSession(next);
+  return group;
+}
+
+export async function resolveStatementImportGroup(sessionId: string, groupId: string, resolution: Exclude<ImportGroupResolution, 'proposed'>) {
+  await simulateWriteDelay();
+  const session = getImportSessionOrThrow(sessionId);
+  if (session.status !== 'ready_for_review') throw new Error('This import session is not open for review.');
+  const group = session.groups.find((candidate) => candidate.id === groupId);
+  if (!group) throw new Error('Import group not found.');
+  const next = {
+    ...session,
+    groups: session.groups.map((candidate) => candidate.id === groupId ? {...candidate, resolution} : candidate),
+    items: session.items.map((item) => group.itemIds.includes(item.id)
+      ? {...item, included: resolution === 'separate' && item.status === 'ready'}
+      : item),
+  };
+  replaceImportSession(next);
+  return next.groups.find((candidate) => candidate.id === groupId)!;
+}
+
+export async function approveStatementImport(sessionId: string) {
+  await simulateWriteDelay();
+  const session = getImportSessionOrThrow(sessionId);
+  if (session.status !== 'ready_for_review') throw new Error('This import session is not ready for approval.');
+  const mergedGroups = session.groups.filter((group) => group.resolution === 'merged');
+  const groupedItemIds = new Set(session.groups.filter((group) => group.resolution !== 'separate').flatMap((group) => group.itemIds));
+  const itemInputs = session.items
+    .filter((item) => item.included && item.status === 'ready' && !groupedItemIds.has(item.id))
+    .map(importItemInput);
+  const groupInputs: TransactionInput[] = mergedGroups.map((group) => ({
+    date: session.items.find((item) => group.itemIds.includes(item.id))?.date ?? new Date().toISOString().slice(0, 10),
+    description: group.proposedDescription,
+    amountMinor: group.proposedAmountMinor,
+    kind: 'expense',
+    accountId: group.proposedAccountId,
+    categoryId: group.proposedCategoryId,
+    notes: `Merged from ${group.itemIds.length} statement rows`,
+    reviewStatus: 'confirmed',
+    source: 'agent',
+  }));
+  const inputs = [...groupInputs, ...itemInputs];
+  inputs.forEach(assertValidTransaction);
+  const createdAt = new Date().toISOString();
+  const created = inputs.map((input) => buildTransaction(input, createdAt));
+  const nextSession = {...session, status: 'imported' as const, approvedTransactionIds: created.map(({id}) => id)};
+  commit({
+    ...snapshot,
+    transactions: [...created, ...snapshot.transactions],
+    importSessions: snapshot.importSessions.map((candidate) => candidate.id === session.id ? nextSession : candidate),
+  });
+  return {session: nextSession, transactions: created};
 }

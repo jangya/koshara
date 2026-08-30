@@ -91,5 +91,6 @@ export function createDemoState(): KosharaState {
     accounts: demoAccounts.map((account) => ({...account})),
     categories: demoCategories.map((category) => ({...category})),
     transactions,
+    importSessions: [],
   };
 }
