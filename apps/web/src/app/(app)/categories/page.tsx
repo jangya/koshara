@@ -1,28 +1,29 @@
 'use client';
 
 import {AlertDialog} from '@astryxdesign/core/AlertDialog';
-import {Badge} from '@astryxdesign/core/Badge';
 import {Button} from '@astryxdesign/core/Button';
 import {Heading} from '@astryxdesign/core/Heading';
 import {Item} from '@astryxdesign/core/Item';
 import {ProgressBar} from '@astryxdesign/core/ProgressBar';
 import {Section} from '@astryxdesign/core/Section';
+import {Selector} from '@astryxdesign/core/Selector';
+import {StatusDot} from '@astryxdesign/core/StatusDot';
 import {HStack, StackItem, VStack} from '@astryxdesign/core/Stack';
 import {Text} from '@astryxdesign/core/Text';
 import {useState} from 'react';
 
 import {CategoryDialog} from '@/components/category-dialog';
 import {Page} from '@/components/page';
-import {formatMinorCurrency} from '@/lib/format';
+import {TryWithAiAgent} from '@/components/try-with-ai-agent';
+import {buildCategoryPrompts} from '@/lib/agent-prompts';
+import {getBudgetStatus} from '@/lib/category-rules';
+import {formatDateRange, getDateRangePreset} from '@/lib/date-range';
+import {formatMinorCurrencySummary} from '@/lib/format';
 import {deleteCategory, useKosharaState} from '@/lib/koshara-store';
 import type {Category} from '@/lib/koshara-types';
 
 function currentMonthRange() {
-  const now = new Date();
-  return {
-    start: new Date(now.getFullYear(), now.getMonth(), 1, 12).toISOString().slice(0, 10),
-    end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 12).toISOString().slice(0, 10),
-  };
+  return getDateRangePreset('this-month');
 }
 
 export default function CategoriesPage() {
@@ -31,13 +32,23 @@ export default function CategoriesPage() {
   const [editing, setEditing] = useState<Category | null>(null);
   const [deleting, setDeleting] = useState<Category | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [sortBy, setSortBy] = useState<'spending' | 'usage' | 'name'>('spending');
   const range = currentMonthRange();
+  const period = formatDateRange(range);
   const expenses = state.transactions.filter((transaction) => transaction.kind === 'expense' && transaction.date >= range.start && transaction.date <= range.end);
   const rows = state.categories.map((category) => {
     const spendingMinor = expenses.filter((transaction) => transaction.categoryId === category.id)
       .reduce((total, transaction) => total + transaction.amountMinor, 0);
     return {category, spendingMinor};
-  }).sort((a, b) => b.spendingMinor - a.spendingMinor);
+  }).sort((a, b) => {
+    if (sortBy === 'name') return a.category.name.localeCompare(b.category.name);
+    if (sortBy === 'usage') {
+      const aUsage = a.category.budgetMinor ? a.spendingMinor / a.category.budgetMinor : -1;
+      const bUsage = b.category.budgetMinor ? b.spendingMinor / b.category.budgetMinor : -1;
+      return bUsage - aUsage;
+    }
+    return b.spendingMinor - a.spendingMinor;
+  });
   const linkedTransactionCount = deleting
     ? state.transactions.filter((transaction) => transaction.categoryId === deleting.id).length
     : 0;
@@ -59,36 +70,48 @@ export default function CategoriesPage() {
         description="Review spending and manage the categories used across Koshara."
         actions={<Button label="Add category" variant="primary" onClick={openCreate} />}
       >
-        <Section padding={0}>
-          <VStack gap={0}>
+        <VStack gap={5}>
+          <Section padding={0}>
+            <VStack gap={0}>
             <HStack gap={3} padding={4} vAlign="center">
               <StackItem size="fill"><Heading level={2}>Monthly category view</Heading></StackItem>
+              <Selector
+                label="Sort categories"
+                value={sortBy}
+                onChange={(value) => setSortBy(value as typeof sortBy)}
+                options={[
+                  {value: 'spending', label: 'Highest spending'},
+                  {value: 'usage', label: 'Budget usage'},
+                  {value: 'name', label: 'Name'},
+                ]}
+                isLabelHidden
+              />
               <Text type="supporting" color="secondary">{rows.length} categories</Text>
             </HStack>
             <VStack as="ul" gap={0}>
               {rows.map(({category, spendingMinor}) => {
                 const budget = category.budgetMinor;
-                const overBudget = budget !== null && spendingMinor > budget;
+                const status = budget !== null ? getBudgetStatus(spendingMinor, budget) : null;
                 return (
                   <Item
                     as="li"
                     key={category.id}
-                    label={<HStack gap={2} vAlign="center"><Text>{category.name}</Text>{overBudget ? <Badge label="Over budget" variant="warning" /> : null}</HStack>}
-                    description={budget ? (
+                    label={<HStack gap={2} vAlign="center"><Text>{category.name}</Text>{status ? <HStack gap={1} vAlign="center"><StatusDot label={status.label} variant={status.variant} /><Text type="supporting">{status.label}</Text></HStack> : null}</HStack>}
+                    description={budget !== null ? (
                       <VStack gap={1}>
-                        <Text type="supporting" color="secondary">{formatMinorCurrency(spendingMinor, 'INR')} of {formatMinorCurrency(budget, 'INR')}</Text>
+                        <Text type="supporting" color="secondary">{formatMinorCurrencySummary(spendingMinor, 'INR')} of {formatMinorCurrencySummary(budget, 'INR')} · {status?.percent}% used</Text>
                         <ProgressBar
                           label={`${category.name} monthly budget`}
                           value={Math.min(spendingMinor, budget)}
                           max={budget}
                           isLabelHidden
-                          variant={overBudget ? 'warning' : 'accent'}
+                          variant={status?.label === 'Over budget' ? 'warning' : 'accent'}
                         />
                       </VStack>
                     ) : <Text type="supporting" color="secondary">No monthly budget set</Text>}
                     endContent={
                       <HStack gap={1} vAlign="center">
-                        <Text>{formatMinorCurrency(spendingMinor, 'INR')}</Text>
+                        <Text hasTabularNumbers>{formatMinorCurrencySummary(spendingMinor, 'INR')}</Text>
                         <Button label="Edit" variant="ghost" size="sm" onClick={() => openEdit(category)} />
                         <Button
                           label="Delete"
@@ -101,15 +124,17 @@ export default function CategoriesPage() {
                       </HStack>
                     }
                     align="start"
-                    density="spacious"
+                    density={budget !== null ? 'spacious' : 'balanced'}
                   />
                 );
               })}
             </VStack>
-          </VStack>
-        </Section>
+            </VStack>
+          </Section>
+          <TryWithAiAgent prompts={buildCategoryPrompts(rows.find(({category}) => category.name === 'Dining')?.category.name ?? rows[0]?.category.name ?? 'a spending category', period)} />
+        </VStack>
       </Page>
-      <CategoryDialog isOpen={editorOpen} onOpenChange={setEditorOpen} category={editing} />
+      <CategoryDialog isOpen={editorOpen} onOpenChange={setEditorOpen} category={editing} categories={state.categories} />
       <AlertDialog
         isOpen={Boolean(deleting)}
         onOpenChange={(open) => !open && !isDeleting && setDeleting(null)}

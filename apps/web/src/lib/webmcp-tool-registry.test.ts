@@ -104,3 +104,29 @@ describe('statement import WebMCP tools', () => {
     expect(transactions?.names).toContain('create_transactions');
   });
 });
+
+describe('category budget WebMCP contracts', () => {
+  it('exposes monthlyBudget on category results and as an optional create/update field', async () => {
+    const listed = await tool('list_categories').execute({}) as Array<{id: string; monthlyBudget: number | null}>;
+    const createSchema = tool('create_category').inputSchema as {properties: Record<string, unknown>; required?: string[]};
+    const updateSchema = tool('update_category').inputSchema as {properties: Record<string, unknown>; required?: string[]};
+
+    expect(listed.find((category) => category.id === 'dining')?.monthlyBudget).toBe(8000);
+    expect(createSchema.properties).toHaveProperty('monthlyBudget');
+    expect(createSchema.required).toEqual(['name']);
+    expect(updateSchema.properties).toHaveProperty('monthlyBudget');
+    expect(updateSchema.required).toEqual(['id']);
+  });
+
+  it('persists a created budget, allows clearing it, and keeps omitted budgets optional', async () => {
+    const suffix = Date.now().toString(36);
+    const created = await tool('create_category').execute({name: `Budget test ${suffix}`, monthlyBudget: 2500}) as {id: string; monthlyBudget: number | null};
+    expect(created.monthlyBudget).toBe(2500);
+
+    const cleared = await tool('update_category').execute({id: created.id, monthlyBudget: null}) as {monthlyBudget: number | null};
+    expect(cleared.monthlyBudget).toBeNull();
+
+    const legacy = await tool('create_category').execute({name: `Legacy test ${suffix}`}) as {monthlyBudget: number | null};
+    expect(legacy.monthlyBudget).toBeNull();
+  });
+});

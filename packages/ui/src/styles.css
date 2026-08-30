@@ -8,6 +8,18 @@ body {
   background: var(--color-background-body);
 }
 
+.transactions-table .astryx-table-scroll-wrapper {
+  max-height: calc(var(--spacing-12) * 10);
+  overflow: auto;
+}
+
+.transactions-table .astryx-table-header {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  background: var(--color-background-surface);
+}
+
 body {
   color: var(--color-text-primary);
   font-family: var(--font-family-body);

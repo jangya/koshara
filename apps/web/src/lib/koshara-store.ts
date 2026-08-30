@@ -3,6 +3,7 @@
 import {useSyncExternalStore} from 'react';
 
 import {createDemoState, demoCategories} from './koshara-seed';
+import {validateCategoryInput as validateCategoryRules} from './category-rules';
 import type {
   Account,
   AccountInput,
@@ -128,9 +129,10 @@ function validateAccountInput(input: AccountInput, currentId?: string) {
 }
 
 function validateCategoryInput(input: CategoryInput, currentId?: string) {
-  if (!input.name.trim()) throw new Error('Category name is required.');
-  const duplicate = snapshot.categories.some((category) => category.id !== currentId && category.name.toLocaleLowerCase() === input.name.trim().toLocaleLowerCase());
-  if (duplicate) throw new Error('A category with this name already exists.');
+  const validation = validateCategoryRules(input, snapshot.categories, currentId);
+  const error = validation.errors.name ?? validation.errors.budgetMinor;
+  if (error) throw new Error(error);
+  if (input.color && !categoryColors.includes(input.color)) throw new Error('Category color is invalid.');
 }
 
 export function hydrateKosharaStore() {
@@ -215,6 +217,22 @@ export async function updateTransaction(id: string, updates: Partial<Transaction
   return next;
 }
 
+export async function updateTransactions(ids: string[], updates: Pick<Partial<TransactionInput>, 'categoryId' | 'reviewStatus'>) {
+  await simulateWriteDelay();
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0) throw new Error('Select at least one transaction.');
+  const selected = uniqueIds.map((id) => snapshot.transactions.find((transaction) => transaction.id === id));
+  if (selected.some((transaction) => !transaction)) throw new Error('One or more selected transactions were not found.');
+  const updated = selected.map((transaction) => ({...transaction!, ...updates}));
+  updated.forEach(assertValidTransaction);
+  const byId = new Map(updated.map((transaction) => [transaction.id, transaction]));
+  commit({
+    ...snapshot,
+    transactions: snapshot.transactions.map((transaction) => byId.get(transaction.id) ?? transaction),
+  });
+  return updated;
+}
+
 export async function createAccount(input: AccountInput) {
   await simulateWriteDelay();
   validateAccountInput(input);
@@ -260,8 +278,8 @@ export async function createCategory(input: CategoryInput) {
     id: createId('category'),
     name: input.name.trim(),
     icon: input.icon?.trim() || undefined,
-    budgetMinor: null,
-    color: categoryColors[snapshot.categories.length % categoryColors.length] ?? 'purple',
+    budgetMinor: input.budgetMinor ?? null,
+    color: input.color ?? categoryColors[snapshot.categories.length % categoryColors.length] ?? 'purple',
   };
   commit({...snapshot, categories: [...snapshot.categories, created]});
   return created;
@@ -274,12 +292,16 @@ export async function updateCategory(id: string, updates: Partial<CategoryInput>
   const nextInput: CategoryInput = {
     name: updates.name ?? current.name,
     icon: updates.icon ?? current.icon,
+    budgetMinor: updates.budgetMinor !== undefined ? updates.budgetMinor : current.budgetMinor,
+    color: updates.color ?? current.color,
   };
   validateCategoryInput(nextInput, id);
   const next: Category = {
     ...current,
     name: nextInput.name.trim(),
     icon: nextInput.icon?.trim() || undefined,
+    budgetMinor: nextInput.budgetMinor ?? null,
+    color: nextInput.color ?? current.color,
   };
   commit({...snapshot, categories: snapshot.categories.map((category) => category.id === id ? next : category)});
   return next;

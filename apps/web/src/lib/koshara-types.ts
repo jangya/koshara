@@ -66,6 +66,8 @@ export interface AccountInput {
 export interface CategoryInput {
   name: string;
   icon?: string;
+  budgetMinor?: number | null;
+  color?: CategoryColor;
 }
 
 export interface ValidationIssue {

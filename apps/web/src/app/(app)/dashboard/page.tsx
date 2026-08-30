@@ -1,20 +1,30 @@
 'use client';
 
+import {Banner} from '@astryxdesign/core/Banner';
 import {Card} from '@astryxdesign/core/Card';
+import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {Grid} from '@astryxdesign/core/Grid';
 import {Heading} from '@astryxdesign/core/Heading';
 import {Item} from '@astryxdesign/core/Item';
 import {Link} from '@astryxdesign/core/Link';
 import {ProgressBar} from '@astryxdesign/core/ProgressBar';
 import {Section} from '@astryxdesign/core/Section';
+import {Skeleton} from '@astryxdesign/core/Skeleton';
 import {HStack, StackItem, VStack} from '@astryxdesign/core/Stack';
 import {Table, pixel, proportional, type TableColumn} from '@astryxdesign/core/Table';
 import {Text} from '@astryxdesign/core/Text';
+import {Suspense, useEffect, useMemo, useState} from 'react';
 
+import {DateRangeControl, useDateRangeSearchParams} from '@/components/date-range-control';
+import {IncomeSpendingChart} from '@/components/income-spending-chart';
 import {Page} from '@/components/page';
-import {formatMinorCurrency, formatTransactionDate} from '@/lib/format';
+import {TryWithAiAgent} from '@/components/try-with-ai-agent';
+import {buildDashboardPrompts} from '@/lib/agent-prompts';
+import {getBudgetStatus} from '@/lib/category-rules';
+import {aggregateTimeline, formatDateRange, getPreviousPeriod, isInDateRange} from '@/lib/date-range';
+import {compareMetric, summarizeTransactions} from '@/lib/finance-insights';
+import {formatMinorCurrencySummary, formatTransactionDate} from '@/lib/format';
 import {useKosharaState} from '@/lib/koshara-store';
-import type {Transaction} from '@/lib/koshara-types';
 
 interface RecentRow extends Record<string, unknown> {
   id: string;
@@ -30,117 +40,176 @@ const recentColumns: TableColumn<RecentRow>[] = [
   {key: 'description', header: 'Description', width: proportional(2)},
   {key: 'category', header: 'Category', width: proportional(1)},
   {key: 'account', header: 'Account', width: proportional(1)},
-  {key: 'amount', header: 'Amount', width: pixel(136), align: 'end'},
+  {
+    key: 'amount',
+    header: 'Amount',
+    width: pixel(136),
+    align: 'end',
+    renderCell: (row) => <Text hasTabularNumbers justify="end">{row.amount}</Text>,
+  },
 ];
 
-function monthRange(offset: number) {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() + offset, 1, 12).toISOString().slice(0, 10);
-  const end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0, 12).toISOString().slice(0, 10);
-  return {start, end};
+function comparisonCopy(current: number, previous: number, previousPeriod: string) {
+  const comparison = compareMetric(current, previous);
+  if (comparison.direction === 'unchanged') return `Unchanged from ${previousPeriod}`;
+  if (comparison.direction === 'new') return `No comparable activity in ${previousPeriod}`;
+  return `${comparison.percent}% ${comparison.direction} than ${previousPeriod}`;
 }
 
-function inRange(transaction: Transaction, range: {start: string; end: string}) {
-  return transaction.date >= range.start && transaction.date <= range.end;
+function useKpiColumnCount() {
+  const [columns, setColumns] = useState(2);
+  useEffect(() => {
+    function update() {
+      if (window.innerWidth >= 1280) setColumns(4);
+      else if (window.innerWidth >= 600) setColumns(2);
+      else setColumns(1);
+    }
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+  return columns;
 }
 
-export default function DashboardPage() {
+function DashboardContent() {
   const state = useKosharaState();
-  const current = monthRange(0);
-  const previous = monthRange(-1);
-  const currentExpenses = state.transactions.filter((transaction) => transaction.kind === 'expense' && inRange(transaction, current));
-  const previousExpenses = state.transactions.filter((transaction) => transaction.kind === 'expense' && inRange(transaction, previous));
-  const currentIncome = state.transactions.filter((transaction) => transaction.kind === 'income' && inRange(transaction, current));
-  const currentTotal = currentExpenses.reduce((total, transaction) => total + transaction.amountMinor, 0);
-  const previousTotal = previousExpenses.reduce((total, transaction) => total + transaction.amountMinor, 0);
-  const incomeTotal = currentIncome.reduce((total, transaction) => total + transaction.amountMinor, 0);
-  const change = previousTotal ? Math.round(((currentTotal - previousTotal) / previousTotal) * 100) : 0;
-  const categoryTotals = state.categories
+  const {range, preset, setRange} = useDateRangeSearchParams();
+  const kpiColumns = useKpiColumnCount();
+  const period = formatDateRange(range);
+  const previousRange = getPreviousPeriod(range);
+  const previousPeriod = formatDateRange(previousRange);
+  const summary = summarizeTransactions(state.transactions, range);
+  const previousSummary = summarizeTransactions(state.transactions, previousRange);
+  const selectedTransactions = useMemo(
+    () => state.transactions.filter((transaction) => isInDateRange(transaction.date, range)),
+    [range, state.transactions],
+  );
+  const categoryTotals = useMemo(() => state.categories
     .map((category) => ({
       category,
-      amountMinor: currentExpenses.filter((transaction) => transaction.categoryId === category.id)
+      amountMinor: selectedTransactions
+        .filter((transaction) => transaction.kind === 'expense' && transaction.categoryId === category.id)
         .reduce((total, transaction) => total + transaction.amountMinor, 0),
     }))
-    .filter((item) => item.amountMinor > 0)
-    .sort((a, b) => b.amountMinor - a.amountMinor);
+    .filter(({amountMinor}) => amountMinor > 0)
+    .sort((a, b) => b.amountMinor - a.amountMinor), [selectedTransactions, state.categories]);
+  const timeline = useMemo(() => aggregateTimeline(selectedTransactions, range), [range, selectedTransactions]);
   const accountName = new Map(state.accounts.map((account) => [account.id, account.name]));
   const categoryName = new Map(state.categories.map((category) => [category.id, category.name]));
-  const recentRows = [...state.transactions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7).map((transaction) => ({
-    id: transaction.id,
-    date: formatTransactionDate(transaction.date),
-    description: transaction.description,
-    category: categoryName.get(transaction.categoryId) ?? 'Uncategorized',
-    account: accountName.get(transaction.accountId) ?? 'Unknown account',
-    amount: `${transaction.kind === 'expense' ? '−' : '+'}${formatMinorCurrency(transaction.amountMinor, 'INR')}`,
-  }));
+  const recentRows: RecentRow[] = [...selectedTransactions]
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 7)
+    .map((transaction) => ({
+      id: transaction.id,
+      date: formatTransactionDate(transaction.date),
+      description: transaction.description,
+      category: categoryName.get(transaction.categoryId) ?? 'Uncategorized',
+      account: accountName.get(transaction.accountId) ?? 'Unknown account',
+      amount: `${transaction.kind === 'expense' ? '−' : '+'}${formatMinorCurrencySummary(transaction.amountMinor, 'INR')}`,
+    }));
+  const metrics = [
+    {
+      label: 'Spending',
+      value: formatMinorCurrencySummary(summary.spendingMinor, 'INR'),
+      comparison: comparisonCopy(summary.spendingMinor, previousSummary.spendingMinor, previousPeriod),
+    },
+    {
+      label: 'Income',
+      value: formatMinorCurrencySummary(summary.incomeMinor, 'INR'),
+      comparison: comparisonCopy(summary.incomeMinor, previousSummary.incomeMinor, previousPeriod),
+    },
+    {
+      label: 'Net cash flow',
+      value: formatMinorCurrencySummary(summary.netCashFlowMinor, 'INR'),
+      comparison: comparisonCopy(summary.netCashFlowMinor, previousSummary.netCashFlowMinor, previousPeriod),
+    },
+    {
+      label: 'Transactions',
+      value: new Intl.NumberFormat('en-IN').format(summary.transactionCount),
+      comparison: comparisonCopy(summary.transactionCount, previousSummary.transactionCount, previousPeriod),
+    },
+  ];
+  const rangeQuery = `from=${range.start}&to=${range.end}&range=${preset}`;
 
   return (
     <Page
       title="Dashboard"
-      description="A clear view of this month across the Mehta household."
-      actions={<Link href="/transactions" isStandalone>View all transactions</Link>}
+      description="Household cash flow, budgets, accounts, and recent activity in one consistent period."
+      actions={<Link href={`/transactions?${rangeQuery}`} isStandalone>View all transactions</Link>}
     >
       <VStack gap={5}>
-        <Grid columns={{minWidth: 220, max: 4, repeat: 'fit'}} gap={4}>
-          <Card padding={4}>
-            <VStack gap={2}>
-              <Text type="supporting" color="secondary">Spent this month</Text>
-              <Heading level={2} type="display-3">{formatMinorCurrency(currentTotal, 'INR')}</Heading>
-              <Text type="supporting" color="secondary">
-                {change > 0 ? '↑' : '↓'} {Math.abs(change)}% from last month
-              </Text>
-            </VStack>
-          </Card>
-          <Card padding={4}>
-            <VStack gap={2}>
-              <Text type="supporting" color="secondary">Income this month</Text>
-              <Heading level={2} type="display-3">{formatMinorCurrency(incomeTotal, 'INR')}</Heading>
-              <Text type="supporting" color="secondary">Across {currentIncome.length} credit{currentIncome.length === 1 ? '' : 's'}</Text>
-            </VStack>
-          </Card>
-          <Card padding={4}>
-            <VStack gap={2}>
-              <Text type="supporting" color="secondary">Transactions</Text>
-              <Heading level={2} type="display-3">{currentExpenses.length}</Heading>
-              <Text type="supporting" color="secondary">{formatMinorCurrency(previousTotal, 'INR')} last month</Text>
-            </VStack>
-          </Card>
-          <Card padding={4}>
-            <VStack gap={2}>
-              <Text type="supporting" color="secondary">Largest category</Text>
-              <Heading level={2} type="display-3">{categoryTotals[0]?.category.name ?? '—'}</Heading>
-              <Text type="supporting" color="secondary">{categoryTotals[0] ? formatMinorCurrency(categoryTotals[0].amountMinor, 'INR') : 'No spending yet'}</Text>
-            </VStack>
-          </Card>
+        <DateRangeControl range={range} preset={preset} onChange={setRange} />
+
+        {summary.needsReviewCount > 0 ? (
+          <Banner
+            status="warning"
+            title={`${summary.needsReviewCount} ${summary.needsReviewCount === 1 ? 'transaction needs' : 'transactions need'} review`}
+            description={`Resolve uncertain categories and details from ${period}.`}
+            endContent={<Link href={`/transactions?${rangeQuery}&review=needs_review`} isStandalone>Review now</Link>}
+          />
+        ) : null}
+
+        <Grid columns={kpiColumns} gap={4}>
+          {metrics.map((metric) => (
+            <Card key={metric.label} padding={4}>
+              <VStack gap={2}>
+                <Text type="supporting" color="secondary">{metric.label}</Text>
+                <Text type="display-3" hasTabularNumbers justify="end">{metric.value}</Text>
+                <Text type="supporting" color="secondary">{metric.comparison}</Text>
+              </VStack>
+            </Card>
+          ))}
         </Grid>
+
+        <IncomeSpendingChart points={timeline} period={period} />
 
         <Grid columns={{minWidth: 300, max: 2, repeat: 'fit'}} gap={5}>
           <Section>
             <VStack gap={4}>
               <HStack gap={3} vAlign="center">
                 <StackItem size="fill"><Heading level={2}>Spending by category</Heading></StackItem>
-                <Text type="supporting" color="secondary">This month</Text>
+                <Text type="supporting" color="secondary">{period}</Text>
               </HStack>
-              <VStack as="ul" gap={1}>
-                {categoryTotals.slice(0, 6).map(({category, amountMinor}) => (
-                  <Item
-                    as="li"
-                    key={category.id}
-                    label={category.name}
-                    description={
-                      <ProgressBar
-                        label={`${category.name} share of monthly spending`}
-                        value={amountMinor}
-                        max={currentTotal || 1}
-                        isLabelHidden
-                        variant="accent"
+              {categoryTotals.length > 0 ? (
+                <VStack as="ul" gap={1}>
+                  {categoryTotals.slice(0, 8).map(({category, amountMinor}) => {
+                    const share = summary.spendingMinor ? Math.round((amountMinor / summary.spendingMinor) * 100) : 0;
+                    const budgetStatus = category.budgetMinor !== null && range.start.slice(0, 7) === range.end.slice(0, 7)
+                      ? getBudgetStatus(amountMinor, category.budgetMinor)
+                      : null;
+                    return (
+                      <Item
+                        as="li"
+                        key={category.id}
+                        label={
+                          <Link href={`/transactions?${rangeQuery}&category=${encodeURIComponent(category.id)}`} isStandalone>
+                            {category.name}
+                          </Link>
+                        }
+                        description={
+                          <VStack gap={1}>
+                            <Text type="supporting" color="secondary">
+                              {share}% of spending{budgetStatus ? ` · ${budgetStatus.label}` : ''}
+                            </Text>
+                            <ProgressBar
+                              label={`${category.name}: ${share}% of selected spending${budgetStatus ? `, ${budgetStatus.label}` : ''}`}
+                              value={amountMinor}
+                              max={summary.spendingMinor || 1}
+                              isLabelHidden
+                              variant={budgetStatus?.label === 'Over budget' ? 'warning' : 'accent'}
+                            />
+                          </VStack>
+                        }
+                        endContent={<Text hasTabularNumbers justify="end">{formatMinorCurrencySummary(amountMinor, 'INR')}</Text>}
+                        density="balanced"
+                        align="start"
                       />
-                    }
-                    endContent={formatMinorCurrency(amountMinor, 'INR')}
-                    density="balanced"
-                  />
-                ))}
-              </VStack>
+                    );
+                  })}
+                </VStack>
+              ) : (
+                <EmptyState title="No category spending" description={`No expenses were recorded in ${period}.`} headingLevel={3} />
+              )}
             </VStack>
           </Section>
 
@@ -156,7 +225,7 @@ export default function DashboardPage() {
                     description={[account.institution, account.lastFour ? `•••• ${account.lastFour}` : null].filter(Boolean).join(' · ') || 'No institution details'}
                     endContent={
                       <VStack gap={0} hAlign="end">
-                        <Text>{formatMinorCurrency(account.balanceMinor, 'INR')}</Text>
+                        <Text hasTabularNumbers>{formatMinorCurrencySummary(account.balanceMinor, 'INR')}</Text>
                         <Text type="supporting" color="secondary">{account.type === 'credit-card' ? 'Outstanding' : 'Available'}</Text>
                       </VStack>
                     }
@@ -170,13 +239,38 @@ export default function DashboardPage() {
 
         <Section padding={0}>
           <VStack gap={3}>
-            <HStack padding={4}>
-              <Heading level={2}>Recent transactions</Heading>
+            <HStack padding={4} vAlign="center">
+              <StackItem size="fill"><Heading level={2}>Recent transactions</Heading></StackItem>
+              <Text type="supporting" color="secondary">{period}</Text>
             </HStack>
-            <Table data={recentRows} columns={recentColumns} idKey="id" density="compact" hasHover textOverflow="truncate" />
+            {recentRows.length > 0 ? (
+              <Table data={recentRows} columns={recentColumns} idKey="id" density="compact" hasHover textOverflow="truncate" />
+            ) : (
+              <EmptyState title="No transactions in this period" description="Choose another period or add a transaction." headingLevel={3} />
+            )}
           </VStack>
         </Section>
+
+        <TryWithAiAgent prompts={buildDashboardPrompts(period, summary.needsReviewCount)} />
       </VStack>
     </Page>
   );
+}
+
+function DashboardSkeleton() {
+  return (
+    <Page title="Dashboard" description="Loading household cash flow, budgets, accounts, and recent activity.">
+      <VStack gap={5}>
+        <Skeleton height="var(--spacing-12)" />
+        <Grid columns={2} gap={4}>
+          {[0, 1, 2, 3].map((index) => <Skeleton key={index} height="calc(var(--spacing-12) * 2)" index={index} />)}
+        </Grid>
+        <Skeleton height="calc(var(--spacing-12) * 5)" index={4} />
+      </VStack>
+    </Page>
+  );
+}
+
+export default function DashboardPage() {
+  return <Suspense fallback={<DashboardSkeleton />}><DashboardContent /></Suspense>;
 }

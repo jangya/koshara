@@ -129,7 +129,23 @@ function accountResult(account: Account) {
 }
 
 function categoryResult(category: Category) {
-  return {id: category.id, name: category.name, icon: category.icon};
+  return {
+    id: category.id,
+    name: category.name,
+    icon: category.icon,
+    color: category.color,
+    monthlyBudget: category.budgetMinor === null ? null : category.budgetMinor / 100,
+    currency: 'INR',
+  };
+}
+
+function optionalMonthlyBudgetMinor(args: ToolArguments) {
+  if (!Object.hasOwn(args, 'monthlyBudget')) return undefined;
+  if (args.monthlyBudget === null) return null;
+  if (typeof args.monthlyBudget !== 'number' || !Number.isFinite(args.monthlyBudget) || args.monthlyBudget < 0) {
+    throw new Error('monthlyBudget must be a non-negative INR amount or null.');
+  }
+  return Math.round(args.monthlyBudget * 100);
 }
 
 function transactionResult(transaction: Transaction) {
@@ -297,29 +313,42 @@ export const KOSHARA_WEBMCP_TOOLS: WebMCPTool[] = [
   },
   {
     name: 'list_categories',
-    description: 'Returns all existing Koshara categories. When processing multiple transactions, call this once and use the returned category list to categorize the entire batch. Prefer existing categories and avoid creating new ones unnecessarily; use Uncategorized with needs_review when genuinely uncertain.',
+    description: 'Returns all existing Koshara categories, including optional monthlyBudget values in INR. When processing multiple transactions, call this once and use the returned category list to categorize the entire batch. Prefer existing categories and avoid creating new ones unnecessarily; use Uncategorized with needs_review when genuinely uncertain.',
     inputSchema: emptySchema,
     annotations: readOnly,
     execute: () => getKosharaState().categories.map(categoryResult),
   },
   {
     name: 'create_category',
-    description: 'Create a category only with explicit user intent or approval. Prefer existing categories and do not create a category merely because a merchant or statement description is unfamiliar.',
+    description: 'Create a category only with explicit user intent or approval. An optional monthlyBudget sets its monthly spending limit in INR. Prefer existing categories and do not create a category merely because a merchant or statement description is unfamiliar.',
     inputSchema: {
       type: 'object',
-      properties: {name: {type: 'string'}, icon: {type: 'string'}},
+      properties: {
+        name: {type: 'string'},
+        icon: {type: 'string'},
+        monthlyBudget: {type: ['number', 'null'], minimum: 0, description: 'Optional monthly spending limit in INR. Use null to leave the category without a limit.'},
+      },
       required: ['name'],
       additionalProperties: false,
     },
     annotations: mutating,
-    execute: async (args) => categoryResult(await createCategory({name: requiredString(args, 'name'), icon: optionalString(args, 'icon')})),
+    execute: async (args) => categoryResult(await createCategory({
+      name: requiredString(args, 'name'),
+      icon: optionalString(args, 'icon'),
+      budgetMinor: optionalMonthlyBudgetMinor(args),
+    })),
   },
   {
     name: 'update_category',
-    description: 'Update selected fields on an existing Koshara category. Omitted fields remain unchanged.',
+    description: 'Update selected fields on an existing Koshara category. Set monthlyBudget in INR, use null to remove the limit, or omit it to keep the current value. Other omitted fields remain unchanged.',
     inputSchema: {
       type: 'object',
-      properties: {id: {type: 'string'}, name: {type: 'string'}, icon: {type: 'string'}},
+      properties: {
+        id: {type: 'string'},
+        name: {type: 'string'},
+        icon: {type: 'string'},
+        monthlyBudget: {type: ['number', 'null'], minimum: 0, description: 'Monthly spending limit in INR. Use null to remove the current limit; omit to keep it unchanged.'},
+      },
       required: ['id'],
       additionalProperties: false,
     },
@@ -328,6 +357,8 @@ export const KOSHARA_WEBMCP_TOOLS: WebMCPTool[] = [
       const updates: Partial<CategoryInput> = {};
       if (typeof args.name === 'string') updates.name = args.name;
       if (typeof args.icon === 'string') updates.icon = args.icon;
+      const budgetMinor = optionalMonthlyBudgetMinor(args);
+      if (budgetMinor !== undefined) updates.budgetMinor = budgetMinor;
       return categoryResult(await updateCategory(requiredString(args, 'id'), updates));
     },
   },
