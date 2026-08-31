@@ -4,14 +4,15 @@ import {HStack, StackItem, VStack} from '@astryxdesign/core/Stack';
 import {Text} from '@astryxdesign/core/Text';
 import type {ReactNode} from 'react';
 
-export function Page({title, description, actions, children}: {
+export function Page({title, description, actions, children, contentWidth}: {
   title: string;
   description?: string;
   actions?: ReactNode;
   children: ReactNode;
+  contentWidth?: number | string;
 }) {
   return (
-    <Layout>
+    <Layout contentWidth={contentWidth}>
       <LayoutHeader hasDivider label={`${title} page header`}>
         <HStack gap={4} padding={5} vAlign="center" wrap="wrap">
           <StackItem size="fill">

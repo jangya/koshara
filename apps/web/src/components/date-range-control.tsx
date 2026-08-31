@@ -3,10 +3,11 @@
 import {DateRangeInput, type DateRange} from '@astryxdesign/core/DateRangeInput';
 import {Heading} from '@astryxdesign/core/Heading';
 import {Selector} from '@astryxdesign/core/Selector';
+import {Skeleton} from '@astryxdesign/core/Skeleton';
 import {HStack, StackItem, VStack} from '@astryxdesign/core/Stack';
 import {Text} from '@astryxdesign/core/Text';
 import {usePathname, useRouter, useSearchParams} from 'next/navigation';
-import {useCallback, useEffect, useMemo} from 'react';
+import {useCallback, useEffect, useMemo, useSyncExternalStore} from 'react';
 
 import {
   DATE_RANGE_PRESETS,
@@ -20,6 +21,14 @@ const calendarPresets = DATE_RANGE_PRESETS.slice(0, 5).map(({label, value}) => (
   label,
   getRange: () => getDateRangePreset(value as Exclude<DateRangePreset, 'custom'>),
 }));
+
+function useHasHydrated() {
+  return useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
+}
 
 export function useDateRangeSearchParams() {
   const router = useRouter();
@@ -61,6 +70,7 @@ export function DateRangeControl({
   onChange: (range: DateRange, preset?: DateRangePreset) => void;
 }) {
   const periodLabel = formatDateRange(range);
+  const hasHydrated = useHasHydrated();
 
   return (
     <VStack gap={3}>
@@ -82,14 +92,16 @@ export function DateRangeControl({
           options={[...DATE_RANGE_PRESETS]}
           isLabelHidden
         />
-        <DateRangeInput
-          label="Exact date range"
-          value={range}
-          onChange={(value) => value && onChange(value, 'custom')}
-          presets={calendarPresets}
-          hasClear={false}
-          isLabelHidden
-        />
+        {hasHydrated ? (
+          <DateRangeInput
+            label="Exact date range"
+            value={range}
+            onChange={(value) => value && onChange(value, 'custom')}
+            presets={calendarPresets}
+            hasClear={false}
+            isLabelHidden
+          />
+        ) : <Skeleton height="var(--spacing-10)" width="calc(var(--spacing-12) * 4)" />}
       </HStack>
       <Text type="supporting" color="secondary">All figures and comparisons on this page use {periodLabel}.</Text>
     </VStack>

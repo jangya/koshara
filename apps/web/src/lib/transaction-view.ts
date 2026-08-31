@@ -1,6 +1,6 @@
 import type {DateRange} from '@astryxdesign/core/DateRangeInput';
 
-import {parseDateRangeParams} from './date-range';
+import {parseDateRangeParams, type DateRangePreset} from './date-range';
 
 export type TransactionSortKey = 'date' | 'amount';
 export type SortDirection = 'ascending' | 'descending';
@@ -85,4 +85,21 @@ export function toggleSelection(selected: Set<string>, id: string, isSelected: b
   if (isSelected) next.add(id);
   else next.delete(id);
   return next;
+}
+
+export function buildTransactionsHref({
+  range,
+  preset,
+  categoryId,
+  reviewStatus,
+}: {
+  range: DateRange;
+  preset: DateRangePreset;
+  categoryId?: string;
+  reviewStatus?: 'needs_review';
+}) {
+  const params = new URLSearchParams({from: range.start, to: range.end, range: preset});
+  if (categoryId) params.set('category', categoryId);
+  if (reviewStatus) params.set('review', reviewStatus);
+  return `/transactions?${params.toString()}`;
 }

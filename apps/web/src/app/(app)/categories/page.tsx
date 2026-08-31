@@ -1,54 +1,55 @@
 'use client';
 
 import {AlertDialog} from '@astryxdesign/core/AlertDialog';
+import {Banner} from '@astryxdesign/core/Banner';
 import {Button} from '@astryxdesign/core/Button';
+import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {Heading} from '@astryxdesign/core/Heading';
-import {Item} from '@astryxdesign/core/Item';
-import {ProgressBar} from '@astryxdesign/core/ProgressBar';
+import {Link} from '@astryxdesign/core/Link';
 import {Section} from '@astryxdesign/core/Section';
 import {Selector} from '@astryxdesign/core/Selector';
-import {StatusDot} from '@astryxdesign/core/StatusDot';
+import {Skeleton} from '@astryxdesign/core/Skeleton';
 import {HStack, StackItem, VStack} from '@astryxdesign/core/Stack';
 import {Text} from '@astryxdesign/core/Text';
-import {useState} from 'react';
+import {Suspense, useMemo, useState} from 'react';
 
+import {CategoryAnalyticsItem} from '@/components/category-analytics-item';
 import {CategoryDialog} from '@/components/category-dialog';
+import {CategoryOverview} from '@/components/category-overview';
+import {DateRangeControl, useDateRangeSearchParams} from '@/components/date-range-control';
 import {Page} from '@/components/page';
-import {getBudgetStatus} from '@/lib/category-rules';
-import {getDateRangePreset} from '@/lib/date-range';
+import {
+  buildCategoryAnalytics,
+  filterCategoryAnalytics,
+  sortCategoryAnalytics,
+  type CategorySortKey,
+  type CategoryViewFilter,
+} from '@/lib/category-analytics';
+import {formatDateRange} from '@/lib/date-range';
 import {formatMinorCurrencySummary} from '@/lib/format';
 import {deleteCategory, useKosharaState} from '@/lib/koshara-store';
 import type {Category} from '@/lib/koshara-types';
+import {buildTransactionsHref} from '@/lib/transaction-view';
 
-function currentMonthRange() {
-  return getDateRangePreset('this-month');
-}
-
-export default function CategoriesPage() {
+function CategoriesContent() {
   const state = useKosharaState();
+  const {range, preset, setRange} = useDateRangeSearchParams();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
   const [deleting, setDeleting] = useState<Category | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [sortBy, setSortBy] = useState<'spending' | 'usage' | 'name'>('spending');
-  const range = currentMonthRange();
-  const expenses = state.transactions.filter((transaction) => transaction.kind === 'expense' && transaction.date >= range.start && transaction.date <= range.end);
-  const rows = state.categories.map((category) => {
-    const spendingMinor = expenses.filter((transaction) => transaction.categoryId === category.id)
-      .reduce((total, transaction) => total + transaction.amountMinor, 0);
-    return {category, spendingMinor};
-  }).sort((a, b) => {
-    if (sortBy === 'name') return a.category.name.localeCompare(b.category.name);
-    if (sortBy === 'usage') {
-      const aUsage = a.category.budgetMinor ? a.spendingMinor / a.category.budgetMinor : -1;
-      const bUsage = b.category.budgetMinor ? b.spendingMinor / b.category.budgetMinor : -1;
-      return bUsage - aUsage;
-    }
-    return b.spendingMinor - a.spendingMinor;
-  });
-  const linkedTransactionCount = deleting
-    ? state.transactions.filter((transaction) => transaction.categoryId === deleting.id).length
-    : 0;
+  const [filter, setFilter] = useState<CategoryViewFilter>('active');
+  const [sortBy, setSortBy] = useState<CategorySortKey>('attention');
+  const analytics = useMemo(() => buildCategoryAnalytics(state.categories, state.transactions, range), [range, state.categories, state.transactions]);
+  const period = formatDateRange(range);
+  const filteredRows = sortCategoryAnalytics(filterCategoryAnalytics(analytics.rows, filter), sortBy);
+  const primaryRows = filter === 'all'
+    ? filteredRows.filter((row) => row.spendingMinor > 0 && !row.isNonSpending && !row.isUncategorized)
+    : filteredRows;
+  const noActivityRows = sortCategoryAnalytics(analytics.rows.filter((row) => row.spendingMinor === 0 && !row.isNonSpending && !row.isUncategorized), 'name');
+  const financialRows = sortCategoryAnalytics(analytics.rows.filter(({isNonSpending}) => isNonSpending), 'spending');
+  const linkedTransactionCount = deleting ? state.transactions.filter(({categoryId}) => categoryId === deleting.id).length : 0;
+  const showSupplementary = filter === 'active' || filter === 'all';
 
   function openCreate() {
     setEditing(null);
@@ -60,74 +61,105 @@ export default function CategoriesPage() {
     setEditorOpen(true);
   }
 
+  function categoryItem(row: (typeof analytics.rows)[number]) {
+    return (
+      <CategoryAnalyticsItem
+        key={row.category.id}
+        row={row}
+        transactionsHref={buildTransactionsHref({range, preset, categoryId: row.category.id})}
+        onEdit={() => openEdit(row.category)}
+        onDelete={() => setDeleting(row.category)}
+      />
+    );
+  }
+
   return (
     <>
       <Page
         title="Categories"
-        description="Review spending and manage the categories used across Koshara."
+        description="Understand category health, budgets, and transactions for one exact period."
         actions={<Button label="Add category" variant="primary" onClick={openCreate} />}
+        contentWidth="calc(var(--spacing-12) * 27)"
       >
-        <VStack gap={5}>
-          <Section padding={0}>
-            <VStack gap={0}>
-            <HStack gap={3} padding={4} vAlign="center">
-              <StackItem size="fill"><Heading level={2}>Monthly category view</Heading></StackItem>
-              <Selector
-                label="Sort categories"
-                value={sortBy}
-                onChange={(value) => setSortBy(value as typeof sortBy)}
-                options={[
-                  {value: 'spending', label: 'Highest spending'},
-                  {value: 'usage', label: 'Budget usage'},
-                  {value: 'name', label: 'Name'},
-                ]}
-                isLabelHidden
-              />
-              <Text type="supporting" color="secondary">{rows.length} categories</Text>
-            </HStack>
-            <VStack as="ul" gap={0}>
-              {rows.map(({category, spendingMinor}) => {
-                const budget = category.budgetMinor;
-                const status = budget !== null ? getBudgetStatus(spendingMinor, budget) : null;
-                return (
-                  <Item
-                    as="li"
-                    key={category.id}
-                    label={<HStack gap={2} vAlign="center"><Text>{category.name}</Text>{status ? <HStack gap={1} vAlign="center"><StatusDot label={status.label} variant={status.variant} /><Text type="supporting">{status.label}</Text></HStack> : null}</HStack>}
-                    description={budget !== null ? (
-                      <VStack gap={1}>
-                        <Text type="supporting" color="secondary">{formatMinorCurrencySummary(spendingMinor, 'INR')} of {formatMinorCurrencySummary(budget, 'INR')} · {status?.percent}% used</Text>
-                        <ProgressBar
-                          label={`${category.name} monthly budget`}
-                          value={Math.min(spendingMinor, budget)}
-                          max={budget}
-                          isLabelHidden
-                          variant={status?.label === 'Over budget' ? 'warning' : 'accent'}
-                        />
-                      </VStack>
-                    ) : <Text type="supporting" color="secondary">No monthly budget set</Text>}
-                    endContent={
-                      <HStack gap={1} vAlign="center">
-                        <Text hasTabularNumbers>{formatMinorCurrencySummary(spendingMinor, 'INR')}</Text>
-                        <Button label="Edit" variant="ghost" size="sm" onClick={() => openEdit(category)} />
-                        <Button
-                          label="Delete"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleting(category)}
-                          isDisabled={category.id === 'uncategorized'}
-                          tooltip={category.id === 'uncategorized' ? 'Required as the fallback category' : undefined}
-                        />
-                      </HStack>
-                    }
-                    align="start"
-                    density={budget !== null ? 'spacious' : 'balanced'}
-                  />
-                );
-              })}
-            </VStack>
+        <VStack gap={4}>
+          <DateRangeControl range={range} preset={preset} onChange={setRange} />
+          <CategoryOverview overview={analytics.overview} period={period} />
+
+          {analytics.overview.uncategorizedCount > 0 ? (
+            <Banner
+              status="warning"
+              title={`${analytics.overview.uncategorizedCount} uncategorized ${analytics.overview.uncategorizedCount === 1 ? 'transaction' : 'transactions'}`}
+              description={`${formatMinorCurrencySummary(analytics.overview.uncategorizedAmountMinor, 'INR')} needs categorization for ${period}.`}
+              endContent={<Link href={buildTransactionsHref({range, preset, categoryId: 'uncategorized'})} isStandalone>Open transactions</Link>}
+            />
+          ) : (
+            <Banner status="success" title={`Everything is categorized for ${period}`} description="No uncategorized activity needs attention." />
+          )}
+
+          <Section>
+            <VStack gap={3}>
+              <HStack gap={3} vAlign="center" wrap="wrap">
+                <StackItem size="fill">
+                  <VStack gap={0}>
+                    <Heading level={2}>Category health</Heading>
+                    <Text type="supporting" color="secondary">Everyday spending categories</Text>
+                  </VStack>
+                </StackItem>
+                <Selector
+                  label="Category view"
+                  value={filter}
+                  onChange={(value) => setFilter(value as CategoryViewFilter)}
+                  options={[
+                    {value: 'active', label: 'Active'},
+                    {value: 'all', label: 'All'},
+                    {value: 'over-budget', label: `Over budget (${analytics.overview.overBudgetCount})`},
+                    {value: 'near-limit', label: `Near limit (${analytics.overview.nearBudgetCount})`},
+                    {value: 'needs-budget', label: `Needs a budget (${analytics.overview.categoriesWithoutBudgetCount})`},
+                    {value: 'uncategorized', label: `Uncategorized (${analytics.overview.uncategorizedCount})`},
+                  ]}
+                  isLabelHidden
+                />
+                <Selector
+                  label="Sort categories"
+                  value={sortBy}
+                  onChange={(value) => setSortBy(value as CategorySortKey)}
+                  options={[
+                    {value: 'attention', label: 'Needs attention'},
+                    {value: 'spending', label: 'Highest spending'},
+                    {value: 'usage', label: 'Budget usage'},
+                    {value: 'change', label: 'Largest increase'},
+                    {value: 'name', label: 'Name'},
+                  ]}
+                  isLabelHidden
+                />
+              </HStack>
+              {primaryRows.length > 0 ? (
+                <VStack as="ul" gap={0}>{primaryRows.map(categoryItem)}</VStack>
+              ) : (
+                <EmptyState title="No categories match this view" description={`Choose another category view for ${period}.`} headingLevel={3} />
+              )}
             </VStack>
           </Section>
+
+          {showSupplementary && noActivityRows.length > 0 ? (
+            <Section variant="transparent" dividers={['top']}>
+              <VStack gap={3}>
+                <HStack gap={3} vAlign="center"><StackItem size="fill"><Heading level={2}>No activity in this period</Heading></StackItem><Text type="supporting" color="secondary">{noActivityRows.length} categories</Text></HStack>
+                <VStack as="ul" gap={0}>{noActivityRows.map(categoryItem)}</VStack>
+              </VStack>
+            </Section>
+          ) : null}
+
+          {showSupplementary ? (
+            <Section variant="transparent" dividers={['top']}>
+              <VStack gap={3}>
+                <Heading level={2}>Income, transfers, and investments</Heading>
+                <Text color="secondary">Financial activity is shown separately so it does not distort ordinary spending or budget health.</Text>
+                <VStack as="ul" gap={0}>{financialRows.map(categoryItem)}</VStack>
+              </VStack>
+            </Section>
+          ) : null}
+
         </VStack>
       </Page>
       <CategoryDialog isOpen={editorOpen} onOpenChange={setEditorOpen} category={editing} categories={state.categories} />
@@ -153,4 +185,20 @@ export default function CategoriesPage() {
       />
     </>
   );
+}
+
+function CategoriesSkeleton() {
+  return (
+    <Page title="Categories" description="Loading category health, budgets, and transactions." contentWidth="calc(var(--spacing-12) * 27)">
+      <VStack gap={5}>
+        <Skeleton height="var(--spacing-12)" />
+        <Skeleton height="calc(var(--spacing-12) * 4)" index={1} />
+        <Skeleton height="calc(var(--spacing-12) * 8)" index={2} />
+      </VStack>
+    </Page>
+  );
+}
+
+export default function CategoriesPage() {
+  return <Suspense fallback={<CategoriesSkeleton />}><CategoriesContent /></Suspense>;
 }

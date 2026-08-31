@@ -37,6 +37,6 @@ describe('budget status', () => {
   it('returns textual on-track, near-limit, and over-budget states', () => {
     expect(getBudgetStatus(7_000, 10_000)).toMatchObject({label: 'On track', percent: 70});
     expect(getBudgetStatus(8_300, 10_000)).toMatchObject({label: 'Near limit', percent: 83});
-    expect(getBudgetStatus(10_001, 10_000)).toMatchObject({label: 'Over budget', percent: 100});
+    expect(getBudgetStatus(12_500, 10_000)).toMatchObject({label: 'Over budget', percent: 125});
   });
 });

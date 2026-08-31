@@ -12,7 +12,6 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TopNav, TopNavHeading, TopNavItem } from "@astryxdesign/core/TopNav";
 import {
-  Banknote,
   Bot,
   Download,
   LayoutDashboard,
@@ -24,35 +23,36 @@ import {
 
 import { LandingDashboardPreview } from "@/components/landing-dashboard-preview";
 import { LandingDemoPrompt } from "@/components/landing-demo-prompt";
+import { LandingWebMcpExperiences } from "@/components/landing-webmcp-experiences";
 
 const workflowSteps = [
   {
     number: "01",
-    title: "Bring a statement",
+    title: "Use Koshara normally",
     description:
-      "Start with a bank or credit-card statement, whatever its format.",
-    icon: Banknote,
+      "Explore your dashboard, transactions, accounts and categories through the regular interface.",
+    icon: LayoutDashboard,
   },
   {
     number: "02",
-    title: "Let your AI understand it",
+    title: "Ask your AI",
     description:
-      "Your chosen AI reads the document and normalizes the transactions.",
+      "Use your preferred AI when you want insights or when a task becomes tedious.",
     icon: Bot,
   },
   {
     number: "03",
     title: "Koshara provides structure",
     description:
-      "WebMCP tools match accounts and categories, validate data, and check duplicates.",
+      "WebMCP gives your AI access to the same financial data, rules and actions available in Koshara.",
     icon: Wrench,
   },
   {
     number: "04",
-    title: "Review your dashboard",
+    title: "Review in the same UI",
     description:
-      "Everything appears in the same clear finance UI you can also use manually.",
-    icon: LayoutDashboard,
+      "See the result in Koshara, continue manually, or approve changes when required.",
+    icon: ShieldCheck,
   },
 ] as const;
 
@@ -96,7 +96,7 @@ export default function HomePage() {
           >
             <VStack gap={5} hAlign="center" className="landing-hero-copy">
               <Text type="label" color="accent" className="landing-eyebrow">
-                Household finance, without the busywork
+                Finance that works with your AI
               </Text>
               <Heading
                 level={1}
@@ -104,7 +104,7 @@ export default function HomePage() {
                 justify="center"
                 textWrap="balance"
               >
-                Turn your statements into a clean household finance dashboard.
+                Your household finances, ready for you and your AI.
               </Heading>
               <Text
                 type="large"
@@ -113,10 +113,9 @@ export default function HomePage() {
                 textWrap="pretty"
                 as="p"
               >
-                Give a bank or credit-card statement to your preferred AI. It
-                can organize the transactions in Koshara through WebMCP, while
-                you keep a normal dashboard for accounts, categories, and
-                spending.
+                Track spending visually, ask your preferred AI for insights,
+                and hand off tedious tasks like statement imports — all using
+                the same Koshara data.
               </Text>
               <HStack
                 gap={3}
@@ -136,7 +135,7 @@ export default function HomePage() {
                   isStandalone
                   className="landing-cta landing-cta-secondary"
                 >
-                  Open dashboard
+                  Explore dashboard
                 </Link>
               </HStack>
               <Text type="supporting" color="secondary">
@@ -151,10 +150,10 @@ export default function HomePage() {
           <VStack gap={8} className="landing-container">
             <VStack gap={3} className="landing-section-heading">
               <Text type="label" color="accent">
-                From statement to dashboard
+                How it works
               </Text>
               <Heading level={2} type="display-3" textWrap="balance">
-                A simple handoff, with clear structure at every step.
+                A simple handoff between you, your AI, and Koshara.
               </Heading>
               <Text color="secondary" as="p">
                 You bring the AI. Koshara gives it safe, structured ways to work
@@ -193,6 +192,8 @@ export default function HomePage() {
           </VStack>
         </Section>
 
+        <LandingWebMcpExperiences />
+
         <Section
           id="demo"
           variant="muted"
@@ -205,11 +206,11 @@ export default function HomePage() {
                 Interactive demo
               </Text>
               <Heading level={2} type="display-3">
-                Try the Koshara demo
+                Try the statement workflow
               </Heading>
               <Text color="secondary" as="p">
-                Use our synthetic bank statement to try the complete workflow
-                without sharing personal financial information.
+                Use the sample statement to experience one complete WebMCP
+                workflow from AI analysis to Koshara review.
               </Text>
             </VStack>
 
@@ -302,7 +303,7 @@ export default function HomePage() {
                 Use Koshara your way
               </Text>
               <Heading level={2} type="display-3">
-                The dashboard doesn&apos;t disappear because AI exists.
+                A dashboard for you. Structured capabilities for your AI.
               </Heading>
             </VStack>
             <Grid columns={{ minWidth: 280, max: 2, repeat: "fit" }} gap={6}>
@@ -310,16 +311,17 @@ export default function HomePage() {
                 <Icon icon={UserRound} color="accent" size="lg" />
                 <Heading level={3}>For you</Heading>
                 <Text color="secondary" as="p">
-                  Add transactions, manage accounts and categories, and explore
-                  spending normally through the dashboard.
+                  Manage transactions, accounts, categories and spending
+                  visually through the dashboard.
                 </Text>
               </VStack>
               <VStack gap={3}>
                 <Icon icon={Bot} color="accent" size="lg" />
                 <Heading level={3}>For your AI</Heading>
                 <Text color="secondary" as="p">
-                  When the work becomes tedious, your chosen agent can use the
-                  same Koshara data through structured WebMCP tools.
+                  When a task becomes tedious or you want deeper insight, your
+                  preferred agent can work with the same Koshara data through
+                  WebMCP.
                 </Text>
               </VStack>
             </Grid>

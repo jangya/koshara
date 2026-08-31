@@ -8,10 +8,14 @@ import {Popover} from '@astryxdesign/core/Popover';
 import {HStack, VStack} from '@astryxdesign/core/Stack';
 import {StatusDot} from '@astryxdesign/core/StatusDot';
 import {Text} from '@astryxdesign/core/Text';
-import {usePathname} from 'next/navigation';
+import {useMediaQuery} from '@astryxdesign/core/hooks';
+import {usePathname, useSearchParams} from 'next/navigation';
 import {useEffect, useMemo, useState} from 'react';
 
-import {copyPrompt, getPageAgentPrompts} from '@/lib/agent-prompts';
+import {buildDataDrivenCategoryPrompts, buildDataDrivenDashboardPrompts, copyPrompt, getPageAgentPrompts} from '@/lib/agent-prompts';
+import {buildAttentionSummary, buildCategoryAnalytics, findIncreasingCategory, findPossibleDuplicateGroups} from '@/lib/category-analytics';
+import {formatDateRange, parseDateRangeParams} from '@/lib/date-range';
+import {useKosharaState} from '@/lib/koshara-store';
 import {getWebMCPPageContext, type WebMCPTool} from '@/lib/webmcp-tool-registry';
 
 type ModelContext = {
@@ -31,8 +35,35 @@ function ToolGroup({label, names}: {label: string; names: readonly string[]}) {
 
 export function WebMCPTools() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const state = useKosharaState();
+  const isMobile = useMediaQuery('(max-width: 48rem)');
+  const serializedSearchParams = searchParams.toString();
   const pageContext = useMemo(() => getWebMCPPageContext(pathname), [pathname]);
-  const prompts = useMemo(() => getPageAgentPrompts(pathname), [pathname]);
+  const prompts = useMemo(() => {
+    if (pathname !== '/dashboard' && pathname !== '/categories') return getPageAgentPrompts(pathname);
+    const {range} = parseDateRangeParams(new URLSearchParams(serializedSearchParams));
+    const analytics = buildCategoryAnalytics(state.categories, state.transactions, range);
+    const overBudgetCategory = analytics.rows
+      .filter(({budgetStatus}) => budgetStatus?.label === 'Over budget')
+      .sort((a, b) => (a.remainingMinor ?? 0) - (b.remainingMinor ?? 0))[0];
+    const shared = {
+      period: formatDateRange(range),
+      uncategorizedCount: analytics.overview.uncategorizedCount,
+      overBudgetCategory: overBudgetCategory?.budgetLimitMinor === null || !overBudgetCategory
+        ? undefined
+        : {name: overBudgetCategory.category.name, budgetLimitMinor: overBudgetCategory.budgetLimitMinor},
+      increasingCategoryName: findIncreasingCategory(analytics.rows)?.category.name,
+      possibleDuplicateCount: findPossibleDuplicateGroups(state.transactions, range).length,
+    };
+    if (pathname === '/categories') {
+      return buildDataDrivenCategoryPrompts({...shared, categoriesWithoutBudgetCount: analytics.overview.categoriesWithoutBudgetCount});
+    }
+    return buildDataDrivenDashboardPrompts({
+      ...shared,
+      needsReviewCount: buildAttentionSummary(state.transactions, range).needsReview.count,
+    });
+  }, [pathname, serializedSearchParams, state.categories, state.transactions]);
   const [registration, setRegistration] = useState({pathname: '', isSupported: false, isComplete: false, count: 0});
   const [copiedPrompt, setCopiedPrompt] = useState<string | null>(null);
 
@@ -77,7 +108,10 @@ export function WebMCPTools() {
   return (
     <HStack
       as="aside"
-      style={{position: 'fixed', insetInlineEnd: 'var(--spacing-3)', bottom: 'var(--spacing-3)'}}
+      className="webmcp-tool-indicator"
+      style={isMobile
+        ? {position: 'static'}
+        : {position: 'fixed', insetInlineEnd: 'var(--spacing-3)', bottom: 'var(--spacing-3)'}}
     >
       <Popover
         placement="above"

@@ -2,7 +2,7 @@
 
 import {useSyncExternalStore} from 'react';
 
-import {createDemoState, demoCategories} from './koshara-seed';
+import {createDemoState, demoCategories, mergeDemoTransactions} from './koshara-seed';
 import {validateCategoryInput as validateCategoryRules} from './category-rules';
 import type {
   Account,
@@ -28,6 +28,7 @@ export const SIMULATED_WRITE_DELAY_MS = 700;
 const serverSnapshot = createDemoState();
 let snapshot = serverSnapshot;
 let isHydrated = false;
+let lastUpdatedAt: string | null = null;
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void) {
@@ -47,8 +48,22 @@ function persist() {
 
 function commit(next: KosharaState) {
   snapshot = next;
+  lastUpdatedAt = new Date().toISOString();
   persist();
   emit();
+}
+
+function transactionBalanceDelta(account: Account, transaction: Pick<Transaction, 'amountMinor' | 'kind'>) {
+  const direction = transaction.kind === 'income' ? 1 : -1;
+  return account.type === 'credit-card'
+    ? direction * -transaction.amountMinor
+    : direction * transaction.amountMinor;
+}
+
+function applyTransactionBalance(accounts: Account[], transaction: Pick<Transaction, 'accountId' | 'amountMinor' | 'kind'>, multiplier = 1) {
+  return accounts.map((account) => account.id === transaction.accountId
+    ? {...account, balanceMinor: account.balanceMinor + transactionBalanceDelta(account, transaction) * multiplier}
+    : account);
 }
 
 function simulateWriteDelay() {
@@ -114,6 +129,19 @@ function normalizeState(value: KosharaState): KosharaState {
   demoCategories.forEach((seeded) => {
     if (!categories.some((category) => category.id === seeded.id)) categories.push({...seeded});
   });
+  const transactions = value.transactions.map((transaction) => {
+    const legacy = transaction as unknown as {note?: string; source?: string};
+    return {
+      ...transaction,
+      notes: transaction.notes ?? legacy.note ?? '',
+      reviewStatus: transaction.reviewStatus ?? 'confirmed',
+      source: legacy.source === 'webmcp'
+        ? 'agent' as const
+        : transactionSources.includes(legacy.source as TransactionSource)
+          ? legacy.source as TransactionSource
+          : 'manual' as const,
+    };
+  });
   return {
     accounts: value.accounts.map((account, index) => ({
       ...account,
@@ -127,15 +155,7 @@ function normalizeState(value: KosharaState): KosharaState {
       budgetMinor: category.budgetMinor ?? null,
       color: category.color ?? categoryColors[index % categoryColors.length],
     })),
-    transactions: value.transactions.map((transaction) => {
-      const legacy = transaction as unknown as {note?: string; source?: string};
-      return {
-        ...transaction,
-        notes: transaction.notes ?? legacy.note ?? '',
-        reviewStatus: transaction.reviewStatus ?? 'confirmed',
-        source: legacy.source === 'webmcp' ? 'agent' : transactionSources.includes(legacy.source as TransactionSource) ? legacy.source as TransactionSource : 'manual',
-      };
-    }),
+    transactions: mergeDemoTransactions(transactions, serverSnapshot.transactions),
     importSessions: importSessions.map((session) => {
       const normalized: ImportSession = {
         ...session,
@@ -217,6 +237,7 @@ export function hydrateKosharaStore() {
     if (event.key !== STORAGE_KEY || !event.newValue) return;
     try {
       snapshot = normalizeState(JSON.parse(event.newValue) as KosharaState);
+      lastUpdatedAt = new Date().toISOString();
       emit();
     } catch {
       // Ignore malformed changes from another tab.
@@ -226,6 +247,10 @@ export function hydrateKosharaStore() {
 
 export function useKosharaState() {
   return useSyncExternalStore(subscribe, () => snapshot, () => serverSnapshot);
+}
+
+export function useKosharaLastUpdatedAt() {
+  return useSyncExternalStore(subscribe, () => lastUpdatedAt, () => null);
 }
 
 export function getKosharaState() {
@@ -256,7 +281,12 @@ export async function createTransactions(inputs: TransactionInput[]) {
     : [{index, errors: validation.errors}]);
 
   if (created.length > 0) {
-    commit({...snapshot, transactions: [...created.map(({transaction}) => transaction), ...snapshot.transactions]});
+    const createdTransactions = created.map(({transaction}) => transaction);
+    const accounts = createdTransactions.reduce(
+      (current, transaction) => applyTransactionBalance(current, transaction),
+      snapshot.accounts,
+    );
+    commit({...snapshot, accounts, transactions: [...createdTransactions, ...snapshot.transactions]});
   }
 
   return {created, failed};
@@ -275,7 +305,9 @@ export async function updateTransaction(id: string, updates: Partial<Transaction
   if (!current) throw new Error('Transaction not found.');
   const next: Transaction = {...current, ...updates};
   assertValidTransaction(next);
-  commit({...snapshot, transactions: snapshot.transactions.map((transaction) => transaction.id === id ? next : transaction)});
+  const accountsWithoutCurrent = applyTransactionBalance(snapshot.accounts, current, -1);
+  const accounts = applyTransactionBalance(accountsWithoutCurrent, next);
+  commit({...snapshot, accounts, transactions: snapshot.transactions.map((transaction) => transaction.id === id ? next : transaction)});
   return next;
 }
 
@@ -373,7 +405,11 @@ export async function deleteTransaction(id: string) {
   await simulateWriteDelay();
   const current = snapshot.transactions.find((transaction) => transaction.id === id);
   if (!current) throw new Error('Transaction not found.');
-  commit({...snapshot, transactions: snapshot.transactions.filter((transaction) => transaction.id !== id)});
+  commit({
+    ...snapshot,
+    accounts: applyTransactionBalance(snapshot.accounts, current, -1),
+    transactions: snapshot.transactions.filter((transaction) => transaction.id !== id),
+  });
   return current;
 }
 
@@ -620,8 +656,13 @@ export async function approveStatementImport(sessionId: string) {
     ...session.approvedTransactionIds,
     ...created.map(({id}) => id),
   ]);
+  const accounts = created.reduce(
+    (current, transaction) => applyTransactionBalance(current, transaction),
+    snapshot.accounts,
+  );
   commit({
     ...snapshot,
+    accounts,
     transactions: [...created, ...snapshot.transactions],
     importSessions: snapshot.importSessions.map((candidate) => candidate.id === session.id ? nextSession : candidate),
   });

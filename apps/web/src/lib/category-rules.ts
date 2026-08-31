@@ -46,14 +46,15 @@ export function validateCategoryInput<T extends CategoryValidationInput>(
 }
 
 export type BudgetStatus = {
-  label: 'On track' | 'Near limit' | 'Over budget';
+  label: 'On track' | 'Watch' | 'Near limit' | 'Over budget';
   percent: number;
   variant: 'success' | 'warning' | 'error';
 };
 
 export function getBudgetStatus(spendingMinor: number, budgetMinor: number): BudgetStatus {
-  if (spendingMinor > budgetMinor) return {label: 'Over budget', percent: 100, variant: 'error'};
   const rawPercent = budgetMinor === 0 ? (spendingMinor > 0 ? 101 : 0) : Math.round((spendingMinor / budgetMinor) * 100);
-  if (rawPercent >= 80) return {label: 'Near limit', percent: rawPercent, variant: 'warning'};
+  if (spendingMinor > budgetMinor) return {label: 'Over budget', percent: rawPercent, variant: 'error'};
+  if (rawPercent >= 90) return {label: 'Near limit', percent: rawPercent, variant: 'warning'};
+  if (rawPercent >= 70) return {label: 'Watch', percent: rawPercent, variant: 'warning'};
   return {label: 'On track', percent: Math.max(0, rawPercent), variant: 'success'};
 }

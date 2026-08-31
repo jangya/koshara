@@ -1,3 +1,5 @@
+import {formatMinorCurrencySummary} from './format';
+
 export function buildDashboardPrompts(period: string, needsReviewCount: number) {
   return [
     `Compare my spending from ${period} with the previous period.`,
@@ -41,6 +43,44 @@ export function buildCategoryPrompts(categoryName: string, period?: string) {
     `Show categories where spending is increasing${period ? ` through ${period}` : ''}.`,
     `Compare actual spending${period ? ` from ${period}` : ''} with my category limits.`,
   ];
+}
+
+interface DataDrivenDashboardPromptContext {
+  period: string;
+  uncategorizedCount: number;
+  needsReviewCount: number;
+  overBudgetCategory?: {name: string; budgetLimitMinor: number};
+  increasingCategoryName?: string;
+  possibleDuplicateCount?: number;
+}
+
+export function buildDataDrivenDashboardPrompts(context: DataDrivenDashboardPromptContext) {
+  const prompts = [`Compare my spending from ${context.period} with the previous period.`];
+  if (context.uncategorizedCount > 0) prompts.push(`Categorize my ${context.uncategorizedCount} uncategorized transactions from ${context.period}.`);
+  if (context.needsReviewCount > 0) prompts.push(`Review my ${context.needsReviewCount} needs-review transactions from ${context.period} and explain your classifications.`);
+  if (context.overBudgetCategory) {
+    prompts.push(`Explain why ${context.overBudgetCategory.name} exceeded its ${formatMinorCurrencySummary(context.overBudgetCategory.budgetLimitMinor, 'INR')} budget for ${context.period}.`);
+  }
+  if (context.increasingCategoryName) prompts.push(`Why has ${context.increasingCategoryName} spending increased over the last three months?`);
+  if ((context.possibleDuplicateCount ?? 0) > 0) prompts.push(`Check my transactions from ${context.period} for possible duplicates.`);
+  return prompts;
+}
+
+interface DataDrivenCategoryPromptContext extends DataDrivenDashboardPromptContext {
+  categoriesWithoutBudgetCount: number;
+}
+
+export function buildDataDrivenCategoryPrompts(context: Pick<DataDrivenCategoryPromptContext,
+  'period' | 'uncategorizedCount' | 'categoriesWithoutBudgetCount' | 'overBudgetCategory' | 'increasingCategoryName' | 'possibleDuplicateCount'>) {
+  const prompts = [`Compare category spending from ${context.period} with the preceding equivalent period.`];
+  if (context.uncategorizedCount > 0) prompts.push(`Categorize my ${context.uncategorizedCount} uncategorized transactions from ${context.period}.`);
+  if (context.overBudgetCategory) {
+    prompts.push(`Explain why ${context.overBudgetCategory.name} exceeded its ${formatMinorCurrencySummary(context.overBudgetCategory.budgetLimitMinor, 'INR')} budget for ${context.period}.`);
+  }
+  if (context.increasingCategoryName) prompts.push(`Why has ${context.increasingCategoryName} spending increased over the last three months?`);
+  if (context.categoriesWithoutBudgetCount > 0) prompts.push(`Suggest monthly budgets using my last six months of spending for the ${context.categoriesWithoutBudgetCount} categories that need a budget.`);
+  if ((context.possibleDuplicateCount ?? 0) > 0) prompts.push(`Check my transactions from ${context.period} for possible duplicates.`);
+  return prompts;
 }
 
 export const STATEMENT_IMPORT_PROMPT = 'Import the attached statement into Koshara using the WebMCP tools available on the Statements page. Use existing accounts and categories. Prepare the transactions for review, identify possible duplicates, group related statement rows where appropriate, and do not add anything to my Transactions until I approve the import.';

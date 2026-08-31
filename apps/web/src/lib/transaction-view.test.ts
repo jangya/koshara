@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 
-import {filterAndSortTransactions, parseTransactionViewParams, toggleSelection} from './transaction-view';
+import {buildTransactionsHref, filterAndSortTransactions, parseTransactionViewParams, toggleSelection} from './transaction-view';
 
 const transactions = [
   {id: 'a', date: '2026-08-02', description: 'Cafe', notes: 'team lunch', amountMinor: 4500, kind: 'expense' as const, accountId: 'bank', categoryId: 'dining', reviewStatus: 'needs_review' as const},
@@ -46,5 +46,18 @@ describe('URL-backed transaction view state', () => {
     expect([...initial]).toEqual(['a']);
     expect([...added]).toEqual(['a', 'b']);
     expect([...removed]).toEqual(['b']);
+  });
+});
+
+describe('filtered transaction links', () => {
+  it('preserves the exact range and applies category or review filters', () => {
+    const range = {start: '2026-08-01', end: '2026-08-31'} as const;
+
+    expect(buildTransactionsHref({range, preset: 'custom', categoryId: 'uncategorized'})).toBe(
+      '/transactions?from=2026-08-01&to=2026-08-31&range=custom&category=uncategorized',
+    );
+    expect(buildTransactionsHref({range, preset: 'custom', reviewStatus: 'needs_review'})).toBe(
+      '/transactions?from=2026-08-01&to=2026-08-31&range=custom&review=needs_review',
+    );
   });
 });

@@ -1,6 +1,7 @@
 'use client';
 
 import {Button} from '@astryxdesign/core/Button';
+import {Collapsible} from '@astryxdesign/core/Collapsible';
 import {Icon} from '@astryxdesign/core/Icon';
 import {HStack, StackItem, VStack} from '@astryxdesign/core/Stack';
 import {Text} from '@astryxdesign/core/Text';
@@ -20,20 +21,26 @@ export function LandingDemoPrompt() {
     <VStack gap={3} className="landing-prompt">
       <HStack gap={3} vAlign="center" wrap="wrap">
         <StackItem size="fill">
-          <Text type="label">Ready-made agent prompt</Text>
+          <VStack gap={1}>
+            <Text type="label">Ready-made agent prompt</Text>
+            <Text type="supporting" color="secondary" as="p">
+              Use this with your WebMCP-capable AI.
+            </Text>
+          </VStack>
         </StackItem>
         <Button
           label={copied ? 'Copied' : 'Copy prompt'}
-          variant="secondary"
+          variant="primary"
           size="sm"
           icon={<Icon icon={copied ? 'check' : 'copy'} color={copied ? 'success' : 'inherit'} />}
           clickAction={copyPrompt}
         />
       </HStack>
-      <Text type="code" as="p" className="landing-prompt-text">{DEMO_PROMPT}</Text>
-      <Text type="supporting" color="secondary" as="p">
-        Attach the sample statement to your WebMCP-capable AI agent and keep the Koshara tab open.
-      </Text>
+      <Collapsible trigger="View prompt" defaultIsOpen={false}>
+        <Text type="code" as="p" className="landing-prompt-text">
+          {DEMO_PROMPT}
+        </Text>
+      </Collapsible>
     </VStack>
   );
 }

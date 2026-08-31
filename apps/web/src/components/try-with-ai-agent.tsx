@@ -11,7 +11,7 @@ import {useState} from 'react';
 
 import {copyPrompt} from '@/lib/agent-prompts';
 
-export function TryWithAiAgent({prompts}: {prompts: string[]}) {
+export function TryWithAiAgent({prompts, headingLevel = 2}: {prompts: string[]; headingLevel?: 2 | 3}) {
   const [feedback, setFeedback] = useState<{index: number; message: string} | null>(null);
 
   async function copy(prompt: string, index: number) {
@@ -27,7 +27,7 @@ export function TryWithAiAgent({prompts}: {prompts: string[]}) {
     <Section variant="muted">
       <VStack gap={3}>
         <VStack gap={1}>
-          <Heading level={2}>Try with your AI agent</Heading>
+          <Heading level={headingLevel}>Try with your AI agent</Heading>
           <Text type="supporting" color="secondary">
             Koshara exposes finance tools to your external AI agent. Copy a prompt below and send it there—nothing runs inside Koshara.
           </Text>

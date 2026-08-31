@@ -20,6 +20,39 @@ body {
   background: var(--color-background-surface);
 }
 
+.dashboard-cash-flow-chart {
+  height: calc(var(--spacing-12) * 6 + var(--spacing-8));
+  min-width: 0;
+}
+
+.dashboard-primary-grid {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.dashboard-metric-refresh {
+  animation: dashboard-metric-refresh var(--duration-medium) var(--ease-standard);
+  border-radius: var(--radius-element);
+}
+
+@keyframes dashboard-metric-refresh {
+  from {
+    background: var(--color-accent-muted);
+    opacity: 0.72;
+    transform: translateY(var(--spacing-1));
+  }
+
+  to {
+    background: transparent;
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dashboard-chart-tooltip {
+  max-width: calc(100% - var(--spacing-2));
+  outline: none;
+}
+
 body {
   color: var(--color-text-primary);
   font-family: var(--font-family-body);
@@ -31,6 +64,12 @@ body {
 
 .landing-shell .astryx-app-shell-header {
   background-color: var(--color-background-surface);
+}
+
+.landing-shell .astryx-top-nav {
+  max-width: calc(var(--spacing-12) * 24);
+  margin-inline: auto;
+  padding-inline: var(--spacing-6);
 }
 
 .landing-page {
@@ -178,7 +217,36 @@ body {
   padding-block: var(--spacing-6);
 }
 
+.category-analytics-item {
+  border-block-start: var(--border-width) solid var(--color-border);
+}
+
+.category-analytics-item:first-child {
+  border-block-start: 0;
+}
+
 @media (max-width: 48rem) {
+  .dashboard-page-content {
+    padding-bottom: calc(var(--spacing-12) * 2);
+  }
+
+  .dashboard-cash-flow-chart {
+    height: calc(var(--spacing-12) * 5);
+  }
+
+  .dashboard-primary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .webmcp-tool-indicator {
+    justify-content: flex-end;
+    padding: var(--spacing-3);
+  }
+
+  .landing-shell .astryx-top-nav {
+    padding-inline: var(--spacing-4);
+  }
+
   .landing-container {
     padding-inline: var(--spacing-4);
   }
@@ -203,6 +271,10 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .dashboard-metric-refresh {
+    animation: none;
+  }
+
   .landing-cta {
     transition: none;
   }

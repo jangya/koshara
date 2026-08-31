@@ -1,3 +1,5 @@
+import {buildAttentionSummary, buildCategoryAnalytics, findPossibleDuplicateGroups} from './category-analytics';
+import {isValidIsoDate} from './date-range';
 import {
   createAccount,
   createCategory,
@@ -351,6 +353,29 @@ export const KOSHARA_WEBMCP_TOOLS: WebMCPTool[] = [
     inputSchema: emptySchema,
     annotations: readOnly,
     execute: () => getKosharaState().categories.map(categoryResult),
+  },
+  {
+    name: 'search_categories',
+    description: 'Search existing Koshara categories by name. Returns category IDs and current monthly budgets so an external agent can resolve the correct category without creating duplicates.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {type: 'string', description: 'Case-insensitive text matched against category names.'},
+        limit: {type: 'integer', minimum: 1, maximum: 100, default: 50},
+      },
+      additionalProperties: false,
+    },
+    annotations: readOnly,
+    execute: (args) => {
+      const query = optionalString(args, 'query')?.toLocaleLowerCase();
+      const limit = typeof args.limit === 'number' ? Math.min(Math.max(Math.trunc(args.limit), 1), 100) : 50;
+      const categories = getKosharaState().categories
+        .filter((category) => !query || category.name.toLocaleLowerCase().includes(query))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .slice(0, limit)
+        .map(categoryResult);
+      return {count: categories.length, categories};
+    },
   },
   {
     name: 'create_category',
@@ -767,10 +792,15 @@ export const KOSHARA_WEBMCP_TOOLS: WebMCPTool[] = [
   },
   {
     name: 'get_spending_summary',
-    description: 'Return structured expense totals from Koshara for a date range, optionally filtered by account or category. Use this data for external reasoning; Koshara does not generate AI insights.',
+    description: 'Return structured expense and category facts from Koshara for a date range, optionally filtered by account or category. Includes budgets and variance, transaction counts, review and uncategorized totals, six-month category trends, top merchants, recurring payments, and exact possible-duplicate groups. Use these facts for external reasoning; Koshara does not generate AI insights.',
     inputSchema: {
       type: 'object',
-      properties: {from: {type: 'string'}, to: {type: 'string'}, accountId: {type: 'string'}, categoryId: {type: 'string'}},
+      properties: {
+        from: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Inclusive YYYY-MM-DD date. Defaults to the start of the current month.'},
+        to: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Inclusive YYYY-MM-DD date. Defaults to today.'},
+        accountId: {type: 'string'},
+        categoryId: {type: 'string'},
+      },
       additionalProperties: false,
     },
     annotations: readOnly,
@@ -780,13 +810,20 @@ export const KOSHARA_WEBMCP_TOOLS: WebMCPTool[] = [
       const to = optionalString(args, 'to') ?? defaults.to;
       const accountId = optionalString(args, 'accountId');
       const categoryId = optionalString(args, 'categoryId');
-      const transactions = getKosharaState().transactions
-        .filter((transaction) => transaction.kind === 'expense' && transaction.date >= from && transaction.date <= to)
+      if (!isValidIsoDate(from) || !isValidIsoDate(to)) throw new Error('from and to must be valid YYYY-MM-DD dates.');
+      if (from > to) throw new Error('from must be on or before to.');
+      const state = getKosharaState();
+      const scopedTransactions = state.transactions
         .filter((transaction) => !accountId || transaction.accountId === accountId)
         .filter((transaction) => !categoryId || transaction.categoryId === categoryId);
+      const transactions = scopedTransactions
+        .filter((transaction) => transaction.kind === 'expense' && transaction.date >= from && transaction.date <= to)
+      const range = {start: from, end: to};
+      const analytics = buildCategoryAnalytics(state.categories, scopedTransactions, range);
+      const attention = buildAttentionSummary(scopedTransactions, range);
+      const duplicateGroups = findPossibleDuplicateGroups(scopedTransactions, range);
       const totals = new Map<string, number>();
       transactions.forEach((transaction) => totals.set(transaction.categoryId, (totals.get(transaction.categoryId) ?? 0) + transaction.amountMinor));
-      const state = getKosharaState();
       return {
         currency: 'INR',
         from,
@@ -800,6 +837,41 @@ export const KOSHARA_WEBMCP_TOOLS: WebMCPTool[] = [
           category: state.categories.find((category) => category.id === id)?.name,
           totalSpend: amountMinor / 100,
         })).sort((a, b) => b.totalSpend - a.totalSpend),
+        categoryDetails: analytics.rows
+          .filter((row) => !categoryId || row.category.id === categoryId)
+          .map((row) => ({
+            categoryId: row.category.id,
+            category: row.category.name,
+            monthlyBudget: row.category.budgetMinor === null ? null : row.category.budgetMinor / 100,
+            periodBudget: row.budgetLimitMinor === null ? null : row.budgetLimitMinor / 100,
+            totalSpend: row.spendingMinor / 100,
+            budgetVariance: row.remainingMinor === null ? null : row.remainingMinor / 100,
+            budgetUsagePercent: row.budgetStatus?.percent ?? null,
+            budgetStatus: row.budgetStatus?.label ?? null,
+            transactionCount: row.transactionCount,
+            averageTransaction: row.averageMinor / 100,
+            previousPeriodSpend: row.previousSpendingMinor / 100,
+            change: row.change,
+            monthlyTrend: row.trend.map((point) => ({month: point.month, totalSpend: point.amountMinor / 100})),
+            topMerchants: row.topMerchants.map((merchant) => ({
+              merchant: merchant.merchant,
+              totalSpend: merchant.amountMinor / 100,
+              transactionCount: merchant.transactionCount,
+            })),
+            recurringPayments: row.recurringPayments,
+          })),
+        attention: {
+          needsReview: {count: attention.needsReview.count, amount: attention.needsReview.amountMinor / 100, transactionIds: attention.needsReview.transactionIds},
+          uncategorized: {count: attention.uncategorized.count, amount: attention.uncategorized.amountMinor / 100, transactionIds: attention.uncategorized.transactionIds},
+          combined: {count: attention.combined.count, amount: attention.combined.amountMinor / 100, transactionIds: attention.combined.transactionIds},
+        },
+        possibleDuplicateGroups: duplicateGroups.map((group) => ({
+          description: group.description,
+          date: group.date,
+          accountId: group.accountId,
+          amount: group.amountMinor / 100,
+          transactionIds: group.transactionIds,
+        })),
       };
     },
   },
@@ -815,7 +887,10 @@ const pageContexts: Array<{matches: (pathname: string) => boolean; label: string
   {
     matches: (pathname) => pathname === '/dashboard',
     label: 'Dashboard',
-    groups: [{label: 'Dashboard insights', names: ['get_spending_summary', 'search_transactions', 'get_accounts', 'list_categories']}],
+    groups: [
+      {label: 'Dashboard insights', names: ['get_spending_summary', 'search_transactions', 'get_accounts', 'list_categories']},
+      {label: 'Transaction actions', names: ['get_transaction', 'create_transaction', 'update_transaction', 'delete_transaction']},
+    ],
   },
   {
     matches: (pathname) => pathname === '/transactions' || pathname.startsWith('/transactions/'),
@@ -830,7 +905,7 @@ const pageContexts: Array<{matches: (pathname: string) => boolean; label: string
   {
     matches: (pathname) => pathname === '/categories' || pathname.startsWith('/categories/'),
     label: 'Categories',
-    groups: [{label: 'Categories', names: ['list_categories', 'create_category', 'update_category', 'delete_category']}],
+    groups: [{label: 'Categories', names: ['search_categories', 'list_categories', 'create_category', 'update_category', 'delete_category']}],
   },
   {
     matches: (pathname) => pathname === '/statements' || pathname.startsWith('/statements/'),

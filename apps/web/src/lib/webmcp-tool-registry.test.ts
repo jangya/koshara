@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 
 import {getKosharaState} from './koshara-store';
-import {KOSHARA_WEBMCP_TOOL_GROUPS, KOSHARA_WEBMCP_TOOLS} from './webmcp-tool-registry';
+import {getWebMCPPageContext, KOSHARA_WEBMCP_TOOL_GROUPS, KOSHARA_WEBMCP_TOOLS} from './webmcp-tool-registry';
 
 function tool(name: string) {
   const found = KOSHARA_WEBMCP_TOOLS.find((candidate) => candidate.name === name);
@@ -106,6 +106,18 @@ describe('statement import WebMCP tools', () => {
 });
 
 describe('category budget WebMCP contracts', () => {
+  it('searches categories and exposes the search tool on the Categories page', () => {
+    const result = tool('search_categories').execute({query: 'din', limit: 5}) as {
+      count: number;
+      categories: Array<{id: string; name: string; monthlyBudget: number | null}>;
+    };
+    const context = getWebMCPPageContext('/categories');
+
+    expect(result).toMatchObject({count: 1, categories: [{id: 'dining', name: 'Dining', monthlyBudget: 8000}]});
+    expect(context?.groups[0]?.names).toContain('search_categories');
+    expect(context?.tools.map(({name}) => name)).toContain('search_categories');
+  });
+
   it('exposes monthlyBudget on category results and as an optional create/update field', async () => {
     const listed = await tool('list_categories').execute({}) as Array<{id: string; monthlyBudget: number | null}>;
     const createSchema = tool('create_category').inputSchema as {properties: Record<string, unknown>; required?: string[]};
@@ -128,5 +140,51 @@ describe('category budget WebMCP contracts', () => {
 
     const legacy = await tool('create_category').execute({name: `Legacy test ${suffix}`}) as {monthlyBudget: number | null};
     expect(legacy.monthlyBudget).toBeNull();
+  });
+});
+
+describe('spending insight WebMCP facts', () => {
+  it('keeps legacy summary fields and adds budgets, trends, attention, merchants, recurring activity, and duplicates', async () => {
+    const result = await tool('get_spending_summary').execute({from: '2026-08-01', to: '2026-08-31'}) as {
+      currency: string;
+      from: string;
+      to: string;
+      totalSpend: number;
+      transactionCount: number;
+      totalsByCategory: unknown[];
+      categoryDetails: Array<{
+        categoryId: string;
+        monthlyBudget: number | null;
+        periodBudget: number | null;
+        budgetStatus: string | null;
+        transactionCount: number;
+        monthlyTrend: unknown[];
+        topMerchants: unknown[];
+        recurringPayments: string[];
+      }>;
+      attention: {needsReview: {count: number}; uncategorized: {count: number}; combined: {count: number}};
+      possibleDuplicateGroups: Array<{transactionIds: string[]}>;
+    };
+
+    expect(result).toMatchObject({currency: 'INR', from: '2026-08-01', to: '2026-08-31'});
+    expect(result.totalSpend).toBeGreaterThan(0);
+    expect(result.transactionCount).toBeGreaterThan(0);
+    expect(result.totalsByCategory.length).toBeGreaterThan(0);
+    expect(result.categoryDetails.find(({categoryId}) => categoryId === 'shopping')).toMatchObject({
+      monthlyBudget: 9000,
+      periodBudget: 9000,
+      budgetStatus: 'Over budget',
+    });
+    expect(result.categoryDetails.find(({categoryId}) => categoryId === 'dining')?.monthlyTrend).toHaveLength(6);
+    expect(result.categoryDetails.find(({categoryId}) => categoryId === 'subscriptions')?.recurringPayments).toContain('Netflix');
+    expect(result.attention.needsReview.count).toBeGreaterThan(0);
+    expect(result.attention.uncategorized.count).toBeGreaterThan(0);
+    expect(result.attention.combined.count).toBeLessThan(result.attention.needsReview.count + result.attention.uncategorized.count);
+    expect(result.possibleDuplicateGroups.some(({transactionIds}) => transactionIds.length > 1)).toBe(true);
+  });
+
+  it('rejects invalid or reversed date ranges at the tool boundary', () => {
+    expect(() => tool('get_spending_summary').execute({from: 'not-a-date', to: '2026-08-31'})).toThrow('from and to must be valid');
+    expect(() => tool('get_spending_summary').execute({from: '2026-09-01', to: '2026-08-31'})).toThrow('from must be on or before to');
   });
 });
