@@ -1,0 +1,288 @@
+@import '@astryxdesign/core/reset.css';
+@import '@astryxdesign/core/astryx.css';
+@import '@astryxdesign/theme-neutral/theme.css';
+
+html,
+body {
+  min-height: 100%;
+  background: var(--color-background-body);
+}
+
+.transactions-table .astryx-table-scroll-wrapper {
+  max-height: calc(var(--spacing-12) * 10);
+  overflow: auto;
+}
+
+.transactions-table .astryx-table-header {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  background: var(--color-background-surface);
+}
+
+.dashboard-cash-flow-chart {
+  height: calc(var(--spacing-12) * 6 + var(--spacing-8));
+  min-width: 0;
+}
+
+.dashboard-primary-grid {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.dashboard-metric-refresh {
+  animation: dashboard-metric-refresh var(--duration-medium) var(--ease-standard);
+  border-radius: var(--radius-element);
+}
+
+@keyframes dashboard-metric-refresh {
+  from {
+    background: var(--color-accent-muted);
+    opacity: 0.72;
+    transform: translateY(var(--spacing-1));
+  }
+
+  to {
+    background: transparent;
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dashboard-chart-tooltip {
+  max-width: calc(100% - var(--spacing-2));
+  outline: none;
+}
+
+.webmcp-tool-indicator {
+  position: fixed;
+  inset-inline-end: var(--spacing-3);
+  bottom: var(--spacing-3);
+}
+
+body {
+  color: var(--color-text-primary);
+  font-family: var(--font-family-body);
+}
+
+.landing-shell {
+  background: var(--color-background-body);
+}
+
+.landing-shell .astryx-app-shell-header {
+  background-color: var(--color-background-surface);
+}
+
+.landing-shell .astryx-top-nav {
+  max-width: calc(var(--spacing-12) * 24);
+  margin-inline: auto;
+  padding-inline: var(--spacing-6);
+}
+
+.landing-page {
+  overflow: hidden;
+}
+
+.landing-container {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: calc(var(--spacing-12) * 24);
+  margin-inline: auto;
+  padding-inline: var(--spacing-6);
+}
+
+.landing-hero {
+  background:
+    radial-gradient(circle at top, var(--color-accent-muted), transparent 48%),
+    linear-gradient(var(--color-background-surface), var(--color-background-body));
+}
+
+.landing-hero-inner {
+  padding-block: calc(var(--spacing-12) * 2);
+}
+
+.landing-hero-copy {
+  max-width: calc(var(--spacing-12) * 15);
+}
+
+.landing-eyebrow {
+  padding: var(--spacing-2) var(--spacing-4);
+  border: var(--border-width) solid var(--color-border-blue);
+  border-radius: var(--radius-full);
+  background: var(--color-accent-muted);
+}
+
+.landing-hero-actions {
+  width: 100%;
+}
+
+.landing-cta {
+  box-sizing: border-box;
+  display: inline-flex;
+  min-height: var(--size-element-lg);
+  align-items: center;
+  justify-content: center;
+  padding-inline: var(--spacing-5);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-element);
+  font-weight: var(--font-weight-semibold);
+  text-align: center;
+  text-decoration: none;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.landing-cta .astryx-text {
+  color: inherit;
+}
+
+.landing-cta-primary {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+}
+
+.landing-cta-primary:hover {
+  box-shadow: var(--shadow-low);
+}
+
+.landing-cta-secondary {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-emphasized);
+  background: var(--color-background-surface);
+}
+
+.landing-cta-secondary:hover {
+  background: var(--color-background-muted);
+}
+
+.landing-cta:focus-visible {
+  outline: calc(var(--border-width) * 2) solid var(--color-accent);
+  outline-offset: var(--spacing-1);
+}
+
+.landing-cta-full {
+  width: 100%;
+}
+
+.landing-preview {
+  width: 100%;
+  max-width: calc(var(--spacing-12) * 21);
+  overflow: hidden;
+  border-color: var(--color-border-emphasized);
+  background: var(--color-background-surface);
+}
+
+.landing-preview-header {
+  border-bottom: var(--border-width) solid var(--color-border);
+  background: var(--color-background-muted);
+}
+
+.landing-metric {
+  min-height: calc(var(--spacing-12) * 2);
+}
+
+.landing-section {
+  padding-block: calc(var(--spacing-12) * 2);
+}
+
+.landing-section-heading {
+  max-width: calc(var(--spacing-12) * 13);
+}
+
+.landing-workflow-step {
+  border-top: calc(var(--border-width) * 2) solid var(--color-border-blue);
+  border-radius: var(--radius-none);
+}
+
+.landing-demo-section {
+  scroll-margin-top: calc(var(--spacing-12) * 2);
+}
+
+.landing-demo-step {
+  height: 100%;
+}
+
+.landing-prompt {
+  padding: var(--spacing-5);
+  border: var(--border-width) solid var(--color-border-emphasized);
+  border-radius: var(--radius-container);
+  background: var(--color-background-surface);
+  box-shadow: var(--shadow-low);
+}
+
+.landing-prompt-text {
+  overflow-wrap: anywhere;
+  padding: var(--spacing-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-element);
+  background: var(--color-background-muted);
+}
+
+.landing-footer-inner {
+  padding-block: var(--spacing-6);
+}
+
+.category-analytics-item {
+  border-block-start: var(--border-width) solid var(--color-border);
+}
+
+.category-analytics-item:first-child {
+  border-block-start: 0;
+}
+
+@media (max-width: 48rem) {
+  .dashboard-page-content {
+    padding-bottom: calc(var(--spacing-12) * 2);
+  }
+
+  .dashboard-cash-flow-chart {
+    height: calc(var(--spacing-12) * 5);
+  }
+
+  .dashboard-primary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .webmcp-tool-indicator {
+    position: static;
+    justify-content: flex-end;
+    padding: var(--spacing-3);
+  }
+
+  .landing-shell .astryx-top-nav {
+    padding-inline: var(--spacing-4);
+  }
+
+  .landing-container {
+    padding-inline: var(--spacing-4);
+  }
+
+  .landing-hero-inner,
+  .landing-section {
+    padding-block: calc(var(--spacing-12) + var(--spacing-6));
+  }
+
+  .landing-hero-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .landing-hero-actions .landing-cta {
+    width: 100%;
+  }
+
+  .landing-preview-header > :last-child {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-metric-refresh {
+    animation: none;
+  }
+
+  .landing-cta {
+    transition: none;
+  }
+}

@@ -13,19 +13,11 @@
     "typecheck": "pnpm --recursive --if-present typecheck",
     "test": "pnpm --recursive --if-present test",
     "test:e2e": "pnpm --filter @koshara/web test:e2e",
-    "db:generate": "pnpm --filter @koshara/database db:generate",
-    "db:migrate": "pnpm --filter @koshara/database db:migrate",
     "astryx": "node node_modules/@astryxdesign/cli/bin/astryx.mjs"
   },
   "devDependencies": {
-    "@astryxdesign/core": "0.2.0",
-    "@eslint/js": "9.39.2",
     "@astryxdesign/cli": "0.2.0",
-    "@astryxdesign/theme-neutral": "0.2.0",
-    "@types/node": "26.1.2",
-    "eslint": "9.39.2",
-    "typescript": "5.9.3",
-    "typescript-eslint": "8.65.0",
-    "vitest": "4.1.10"
+    "@astryxdesign/core": "0.2.0",
+    "@astryxdesign/theme-neutral": "0.2.0"
   }
 }

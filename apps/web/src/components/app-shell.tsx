@@ -1,44 +1,38 @@
 'use client';
 
-import {OrganizationSwitcher, UserButton} from '@clerk/nextjs';
 import {AppShell as AstryxAppShell} from '@astryxdesign/core/AppShell';
 import {SideNav, SideNavHeading, SideNavItem, SideNavSection} from '@astryxdesign/core/SideNav';
-import {HStack} from '@astryxdesign/core/Stack';
+import {VStack} from '@astryxdesign/core/Stack';
+import {Text} from '@astryxdesign/core/Text';
 import {usePathname} from 'next/navigation';
 import type {ReactNode} from 'react';
 
 const navigation = [
   {href: '/dashboard', label: 'Dashboard'},
   {href: '/transactions', label: 'Transactions'},
-  {href: '/imports', label: 'Imports'},
-  {href: '/gmail', label: 'Gmail'},
-  {href: '/recurring', label: 'Recurring'},
-  {href: '/categories', label: 'Categories'},
+  {href: '/statements', label: 'Statements'},
   {href: '/accounts', label: 'Accounts'},
-  {href: '/household', label: 'Household'},
-  {href: '/settings', label: 'Settings'},
+  {href: '/categories', label: 'Categories'},
 ] as const;
 
-export function AppShell({children, householdName, applicationName}: {
+export function AppShell({children}: {
   children: ReactNode;
-  householdName: string;
-  applicationName: string;
 }) {
   const pathname = usePathname();
   const sideNavigation = (
     <SideNav
       header={
         <SideNavHeading
-          heading={applicationName}
+          heading="Koshara"
           headingHref="/dashboard"
-          subheading={householdName}
+          subheading="Mehta household"
         />
       }
       footer={
-        <HStack gap={3} padding={3} vAlign="center">
-          <OrganizationSwitcher hidePersonal />
-          <UserButton />
-        </HStack>
+        <VStack gap={1} padding={3}>
+          <Text type="supporting" color="secondary">Local demo workspace</Text>
+          <Text type="supporting" color="secondary">₹ INR · Saved on this device</Text>
+        </VStack>
       }
       collapsible
     >

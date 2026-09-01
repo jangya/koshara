@@ -1,91 +1,109 @@
-import {Card} from '@astryxdesign/core/Card';
-import {EmptyState} from '@astryxdesign/core/EmptyState';
+'use client';
+
 import {Grid} from '@astryxdesign/core/Grid';
-import {Heading} from '@astryxdesign/core/Heading';
 import {Link} from '@astryxdesign/core/Link';
-import {Section} from '@astryxdesign/core/Section';
-import {VStack} from '@astryxdesign/core/Stack';
-import {Table, pixel, proportional, type TableColumn} from '@astryxdesign/core/Table';
+import {Skeleton} from '@astryxdesign/core/Skeleton';
+import {HStack, VStack} from '@astryxdesign/core/Stack';
+import {StatusDot} from '@astryxdesign/core/StatusDot';
 import {Text} from '@astryxdesign/core/Text';
-import {getDashboardSummary} from '@koshara/database';
-import type {Metadata} from 'next';
+import {Suspense, useEffect, useMemo, useState} from 'react';
 
+import {DashboardAccounts} from '@/components/dashboard-accounts';
+import {DashboardBudgetAttention} from '@/components/dashboard-budget-attention';
+import {DashboardCategorySpending} from '@/components/dashboard-category-spending';
+import {DashboardRecentTransactions} from '@/components/dashboard-recent-transactions';
+import {DashboardSummaryCard} from '@/components/dashboard-summary-card';
+import {DateRangeControl, useDateRangeSearchParams} from '@/components/date-range-control';
+import {IncomeSpendingChart} from '@/components/income-spending-chart';
 import {Page} from '@/components/page';
-import {getDatabase} from '@/lib/database';
-import {formatMinorCurrency, formatTransactionDate} from '@/lib/format';
-import {getHouseholdPageContext} from '@/lib/page-access';
+import {formatDateRange} from '@/lib/date-range';
+import {buildDashboardViewModel} from '@/lib/dashboard-insights';
+import {useKosharaLastUpdatedAt, useKosharaState} from '@/lib/koshara-store';
+import {buildTransactionsHref} from '@/lib/transaction-view';
 
-export const metadata: Metadata = {title: 'Dashboard'};
+function useUpdateNotice(lastUpdatedAt: string | null) {
+  const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null);
 
-interface RecentTransactionRow extends Record<string, unknown> {
-  id: string;
-  date: string;
-  account: string;
-  description: string;
-  amount: string;
+  useEffect(() => {
+    if (!lastUpdatedAt) return;
+    const timer = window.setTimeout(() => setDismissedUpdate(lastUpdatedAt), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [lastUpdatedAt]);
+
+  return lastUpdatedAt !== null && dismissedUpdate !== lastUpdatedAt;
 }
 
-const recentColumns: TableColumn<RecentTransactionRow>[] = [
-  {key: 'date', header: 'Date', width: pixel(120)},
-  {key: 'account', header: 'Account', width: proportional(1)},
-  {key: 'description', header: 'Description', width: proportional(2)},
-  {key: 'amount', header: 'Amount', width: pixel(140), align: 'end'},
-];
+function DashboardContent() {
+  const state = useKosharaState();
+  const lastUpdatedAt = useKosharaLastUpdatedAt();
+  const showUpdateNotice = useUpdateNotice(lastUpdatedAt);
+  const {range, preset, setRange} = useDateRangeSearchParams();
+  const period = formatDateRange(range);
+  const view = useMemo(() => buildDashboardViewModel(state, range), [range, state]);
+  const previousPeriod = formatDateRange(view.previousRange);
+  const allTransactionsHref = buildTransactionsHref({range, preset});
 
-export default async function DashboardPage() {
-  const context = await getHouseholdPageContext();
-  const summary = await getDashboardSummary(getDatabase(), context.householdId);
-  const metrics = [
-    {label: 'Transactions', value: summary.transactionCount.toLocaleString('en-IN')},
-    ...summary.currencyTotals.flatMap((currency) => [
-      {label: `${currency.currency} expenses`, value: formatMinorCurrency(currency.expenseMinor, currency.currency)},
-      {label: `${currency.currency} income`, value: formatMinorCurrency(currency.incomeMinor, currency.currency)},
-      {label: `${currency.currency} net flow`, value: formatMinorCurrency(currency.netMinor, currency.currency)},
-    ]),
-  ];
   return (
-    <Page title="Dashboard" description="Cash-flow totals from committed household transactions only; currencies are never combined without conversion.">
-      <VStack gap={5}>
+    <Page
+      title="Dashboard"
+      description="Household cash flow, budgets, accounts, and recent activity in one consistent period."
+      actions={
+        <HStack gap={3} vAlign="center" wrap="wrap">
+          {showUpdateNotice ? (
+            <HStack as="span" gap={1} vAlign="center" role="status" aria-live="polite">
+              <StatusDot variant="success" label="Dashboard synchronized" isPulsing />
+              <Text type="supporting" color="secondary">Updated just now</Text>
+            </HStack>
+          ) : null}
+          <Link href={allTransactionsHref} isStandalone>View all transactions</Link>
+        </HStack>
+      }
+    >
+      <VStack gap={5} className="dashboard-page-content">
+        <DateRangeControl range={range} preset={preset} onChange={setRange} />
+
         <Grid columns={{minWidth: 220, max: 4, repeat: 'fit'}} gap={4}>
-          {metrics.map((metric) => (
-            <Card key={metric.label} padding={4}>
-              <VStack gap={2}>
-                <Text type="supporting" color="secondary">{metric.label}</Text>
-                <Heading level={2} type="display-3">{metric.value}</Heading>
-              </VStack>
-            </Card>
+          {view.metrics.map((metric) => (
+            <DashboardSummaryCard key={metric.key} metric={metric} previousPeriod={previousPeriod} />
           ))}
         </Grid>
-        {summary.recentTransactions.length > 0 ? (
-          <Section padding={0}>
-            <VStack gap={3}>
-              <Heading level={2}>Recent transactions</Heading>
-              <Table
-                data={summary.recentTransactions.map((transaction) => ({
-                  id: transaction.id,
-                  date: formatTransactionDate(transaction.transactionDate),
-                  account: transaction.accountDisplayName,
-                  description: transaction.description,
-                  amount: formatMinorCurrency(transaction.amountMinor, transaction.currency),
-                }))}
-                columns={recentColumns}
-                idKey="id"
-                density="compact"
-                hasHover
-              />
-            </VStack>
-          </Section>
-        ) : (
-          <Section padding={6} minHeight="20rem">
-            <EmptyState
-              title="No household transactions yet"
-              description="Commit a reviewed CSV import to populate real dashboard metrics. No sample financial data is shown."
-              actions={<Link href="/imports" isStandalone>Start a CSV import</Link>}
-              headingLevel={2}
-            />
-          </Section>
-        )}
+
+        <Grid className="dashboard-primary-grid" gap={5}>
+          <IncomeSpendingChart points={view.timeline} period={period} />
+          <DashboardBudgetAttention items={view.budgetAttention} period={period} />
+        </Grid>
+
+        <Grid columns={{minWidth: 320, max: 2, repeat: 'fit'}} gap={5}>
+          <DashboardCategorySpending
+            rows={view.categories}
+            totalSpendingMinor={view.totalCategorizedSpendingMinor}
+            range={range}
+            preset={preset}
+            period={period}
+          />
+          <DashboardAccounts accounts={view.accounts} />
+        </Grid>
+
+        <DashboardRecentTransactions rows={view.recentTransactions} period={period} allTransactionsHref={allTransactionsHref} />
       </VStack>
     </Page>
   );
+}
+
+function DashboardSkeleton() {
+  return (
+    <Page title="Dashboard" description="Loading household cash flow, budgets, accounts, and recent activity.">
+      <VStack gap={5}>
+        <Skeleton height="var(--spacing-12)" />
+        <Grid columns={{minWidth: 220, max: 4, repeat: 'fit'}} gap={4}>
+          {[0, 1, 2, 3].map((index) => <Skeleton key={index} height="calc(var(--spacing-12) * 2)" index={index} />)}
+        </Grid>
+        <Skeleton height="calc(var(--spacing-12) * 7)" index={4} />
+      </VStack>
+    </Page>
+  );
+}
+
+export default function DashboardPage() {
+  return <Suspense fallback={<DashboardSkeleton />}><DashboardContent /></Suspense>;
 }

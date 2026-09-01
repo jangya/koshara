@@ -1,18 +1,16 @@
-import '@koshara/ui/styles.css';
+import './styles.css';
 
 import type {Metadata} from 'next';
 import type {ReactNode} from 'react';
-
-import {defaultBrand} from '@koshara/ui';
 
 import {Providers} from './providers';
 
 export const metadata: Metadata = {
   title: {
-    default: defaultBrand.applicationName,
-    template: `%s · ${defaultBrand.applicationName}`,
+    default: 'Koshara',
+    template: '%s · Koshara',
   },
-  description: defaultBrand.tagline,
+  description: 'Every account. One household view.',
 };
 
 export default function RootLayout({children}: Readonly<{children: ReactNode}>) {
