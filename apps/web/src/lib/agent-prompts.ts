@@ -1,5 +1,7 @@
 import {formatMinorCurrencySummary} from './format';
 
+export const CASHFLOW_CHART_DEMO_PROMPT = 'Analyze why my spending increased over the last three months. Update the dashboard chart to show the most useful comparison, highlight the dates and categories responsible, and explain what you found.';
+
 export function buildDashboardPrompts(period: string, needsReviewCount: number) {
   return [
     `Compare my spending from ${period} with the previous period.`,
@@ -55,7 +57,7 @@ interface DataDrivenDashboardPromptContext {
 }
 
 export function buildDataDrivenDashboardPrompts(context: DataDrivenDashboardPromptContext) {
-  const prompts = [`Compare my spending from ${context.period} with the previous period.`];
+  const prompts = [CASHFLOW_CHART_DEMO_PROMPT, `Compare my spending from ${context.period} with the previous period.`];
   if (context.uncategorizedCount > 0) prompts.push(`Categorize my ${context.uncategorizedCount} uncategorized transactions from ${context.period}.`);
   if (context.needsReviewCount > 0) prompts.push(`Review my ${context.needsReviewCount} needs-review transactions from ${context.period} and explain your classifications.`);
   if (context.overBudgetCategory) {

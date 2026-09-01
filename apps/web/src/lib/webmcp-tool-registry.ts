@@ -1,5 +1,8 @@
 import {buildAttentionSummary, buildCategoryAnalytics, findPossibleDuplicateGroups} from './category-analytics';
+import {configureCashflowChart, type CashflowChartConfiguration, type CashflowChartMode} from './cashflow-chart';
+import {configureCategorySpendingChart, type CategorySpendingChartConfiguration} from './category-spending-chart';
 import {isValidIsoDate} from './date-range';
+import type {TimelineGrouping} from './date-range';
 import {
   createAccount,
   createCategory,
@@ -46,6 +49,7 @@ export const KOSHARA_WEBMCP_TOOL_GROUPS = [
   {label: 'Categories', names: ['list_categories', 'create_category', 'update_category', 'delete_category']},
   {label: 'Transactions', names: ['search_transactions', 'get_transaction', 'validate_transaction', 'check_transactions', 'find_possible_duplicates', 'create_transaction', 'create_transactions', 'update_transaction', 'delete_transaction']},
   {label: 'Insights', names: ['get_spending_summary']},
+  {label: 'Chart presentation', names: ['configure_cashflow_chart', 'configure_category_spending_chart']},
 ] as const;
 
 const emptySchema = {type: 'object', properties: {}, additionalProperties: false};
@@ -54,6 +58,8 @@ const mutating = {readOnlyHint: false};
 const accountTypes: AccountType[] = ['bank', 'credit-card', 'cash', 'wallet', 'other'];
 const reviewStatuses: ReviewStatus[] = ['confirmed', 'needs_review'];
 const sources: TransactionSource[] = ['manual', 'agent'];
+const cashflowChartModes: CashflowChartMode[] = ['combined', 'spending', 'income'];
+const timelineGroupings: TimelineGrouping[] = ['daily', 'weekly', 'monthly'];
 const proposedTransactionProperties = {
   date: {type: 'string', description: 'YYYY-MM-DD date.'},
   description: {type: 'string'},
@@ -94,6 +100,87 @@ function requiredAmountMinor(args: ToolArguments) {
   const value = optionalAmountMinor(args);
   if (value === undefined) throw new Error('amount is required.');
   return value;
+}
+
+function optionalStringArray(args: ToolArguments, key: string) {
+  const value = args[key];
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !item.trim())) {
+    throw new Error(`${key} must be an array of non-empty strings.`);
+  }
+  return [...new Set(value.map((item) => item.trim()))];
+}
+
+function parseCashflowChartConfiguration(args: ToolArguments): CashflowChartConfiguration {
+  const state = getKosharaState();
+  const mode = args.mode === undefined ? 'combined' : args.mode;
+  const grouping = args.grouping === undefined ? 'daily' : args.grouping;
+  if (!cashflowChartModes.includes(mode as CashflowChartMode)) throw new Error('mode must be combined, spending, or income.');
+  if (!timelineGroupings.includes(grouping as TimelineGrouping)) throw new Error('grouping must be daily, weekly, or monthly.');
+
+  let dateRange: CashflowChartConfiguration['dateRange'];
+  if (args.dateRange !== undefined) {
+    if (!args.dateRange || typeof args.dateRange !== 'object' || Array.isArray(args.dateRange)) throw new Error('dateRange must include from and to.');
+    const value = args.dateRange as ToolArguments;
+    const from = requiredString(value, 'from');
+    const to = requiredString(value, 'to');
+    if (!isValidIsoDate(from) || !isValidIsoDate(to)) throw new Error('dateRange from and to must be valid YYYY-MM-DD dates.');
+    if (from > to) throw new Error('dateRange from must be on or before to.');
+    dateRange = {from, to};
+  }
+
+  const accountIds = optionalStringArray(args, 'accountIds');
+  const categoryIds = optionalStringArray(args, 'categoryIds');
+  const highlightedCategoryIds = optionalStringArray(args, 'highlightedCategoryIds');
+  const highlightedDates = optionalStringArray(args, 'highlightedDates');
+  const knownAccountIds = new Set(state.accounts.map(({id}) => id));
+  const knownCategoryIds = new Set(state.categories.map(({id}) => id));
+  const unknownAccounts = accountIds.filter((id) => !knownAccountIds.has(id));
+  const unknownCategories = [...categoryIds, ...highlightedCategoryIds].filter((id) => !knownCategoryIds.has(id));
+  if (unknownAccounts.length > 0) throw new Error(`Unknown accountIds: ${unknownAccounts.join(', ')}.`);
+  if (unknownCategories.length > 0) throw new Error(`Unknown categoryIds: ${[...new Set(unknownCategories)].join(', ')}.`);
+  if (highlightedDates.some((date) => !isValidIsoDate(date))) throw new Error('highlightedDates must contain valid YYYY-MM-DD dates.');
+  if (args.comparePreviousPeriod !== undefined && typeof args.comparePreviousPeriod !== 'boolean') throw new Error('comparePreviousPeriod must be a boolean.');
+  const insightTitle = optionalString(args, 'insightTitle');
+  if (insightTitle && insightTitle.length > 120) throw new Error('insightTitle must be 120 characters or fewer.');
+
+  return {
+    mode: mode as CashflowChartMode,
+    grouping: grouping as TimelineGrouping,
+    dateRange,
+    accountIds,
+    categoryIds,
+    comparePreviousPeriod: args.comparePreviousPeriod === true,
+    highlightedDates,
+    highlightedCategoryIds,
+    insightTitle,
+  };
+}
+
+function parseCategorySpendingChartConfiguration(args: ToolArguments): CategorySpendingChartConfiguration {
+  const state = getKosharaState();
+  let dateRange: CategorySpendingChartConfiguration['dateRange'];
+  if (args.dateRange !== undefined) {
+    if (!args.dateRange || typeof args.dateRange !== 'object' || Array.isArray(args.dateRange)) throw new Error('dateRange must include from and to.');
+    const value = args.dateRange as ToolArguments;
+    const from = requiredString(value, 'from');
+    const to = requiredString(value, 'to');
+    if (!isValidIsoDate(from) || !isValidIsoDate(to)) throw new Error('dateRange from and to must be valid YYYY-MM-DD dates.');
+    if (from > to) throw new Error('dateRange from must be on or before to.');
+    dateRange = {from, to};
+  }
+  const accountIds = optionalStringArray(args, 'accountIds');
+  const categoryIds = optionalStringArray(args, 'categoryIds');
+  const highlightedCategoryIds = optionalStringArray(args, 'highlightedCategoryIds');
+  const knownAccountIds = new Set(state.accounts.map(({id}) => id));
+  const knownCategoryIds = new Set(state.categories.map(({id}) => id));
+  const unknownAccounts = accountIds.filter((id) => !knownAccountIds.has(id));
+  const unknownCategories = [...categoryIds, ...highlightedCategoryIds].filter((id) => !knownCategoryIds.has(id));
+  if (unknownAccounts.length > 0) throw new Error(`Unknown accountIds: ${unknownAccounts.join(', ')}.`);
+  if (unknownCategories.length > 0) throw new Error(`Unknown categoryIds: ${[...new Set(unknownCategories)].join(', ')}.`);
+  const insightTitle = optionalString(args, 'insightTitle');
+  if (insightTitle && insightTitle.length > 120) throw new Error('insightTitle must be 120 characters or fewer.');
+  return {dateRange, accountIds, categoryIds, highlightedCategoryIds, insightTitle};
 }
 
 function parseKind(value: unknown, fallback?: TransactionKind) {
@@ -875,6 +962,66 @@ export const KOSHARA_WEBMCP_TOOLS: WebMCPTool[] = [
       };
     },
   },
+  {
+    name: 'configure_cashflow_chart',
+    description: 'Update the currently visible Dashboard cash-flow chart after analyzing Koshara data with read-only finance tools. This changes temporary presentation state only and never changes transactions, accounts, categories, or budgets. Use an insightTitle to summarize the finding, comparison to show change over time, and highlights to identify responsible dates or categories.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mode: {type: 'string', enum: cashflowChartModes, description: 'Visible cash-flow series.'},
+        grouping: {type: 'string', enum: timelineGroupings, description: 'Time bucket size.'},
+        dateRange: {
+          type: 'object',
+          properties: {
+            from: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Inclusive start date.'},
+            to: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Inclusive end date.'},
+          },
+          required: ['from', 'to'],
+          additionalProperties: false,
+        },
+        accountIds: {type: 'array', items: {type: 'string'}, uniqueItems: true, description: 'Existing account IDs to include. Empty or omitted includes every account.'},
+        categoryIds: {type: 'array', items: {type: 'string'}, uniqueItems: true, description: 'Existing category IDs to include. Empty or omitted includes every category.'},
+        comparePreviousPeriod: {type: 'boolean', description: 'Overlay the immediately preceding period of equal duration.'},
+        highlightedDates: {type: 'array', items: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$'}, uniqueItems: true, description: 'Dates to emphasize on the chart.'},
+        highlightedCategoryIds: {type: 'array', items: {type: 'string'}, uniqueItems: true, description: 'Existing category IDs to emphasize as drivers.'},
+        insightTitle: {type: 'string', minLength: 1, maxLength: 120, description: 'Short agent-generated title explaining the chart insight.'},
+      },
+      additionalProperties: false,
+    },
+    annotations: mutating,
+    execute: (args) => {
+      const next = configureCashflowChart(parseCashflowChartConfiguration(args));
+      return {updated: true, configuration: next, message: 'The visible Dashboard cash-flow chart was updated. Financial data was not changed.'};
+    },
+  },
+  {
+    name: 'configure_category_spending_chart',
+    description: 'Update the currently visible Dashboard spending-by-category pie chart after analyzing Koshara data with read-only finance tools. This changes temporary presentation state only and never changes transactions, categories, or budgets.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dateRange: {
+          type: 'object',
+          properties: {
+            from: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Inclusive start date.'},
+            to: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Inclusive end date.'},
+          },
+          required: ['from', 'to'],
+          additionalProperties: false,
+        },
+        accountIds: {type: 'array', items: {type: 'string'}, uniqueItems: true, description: 'Existing account IDs to include. Empty or omitted includes every account.'},
+        categoryIds: {type: 'array', items: {type: 'string'}, uniqueItems: true, description: 'Existing category IDs to include. Empty or omitted includes every spending category.'},
+        highlightedCategoryIds: {type: 'array', items: {type: 'string'}, uniqueItems: true, description: 'Existing category IDs to emphasize in the pie chart.'},
+        insightTitle: {type: 'string', minLength: 1, maxLength: 120, description: 'Short agent-generated title explaining the category insight.'},
+      },
+      additionalProperties: false,
+    },
+    annotations: mutating,
+    execute: (args) => {
+      const next = configureCategorySpendingChart(parseCategorySpendingChartConfiguration(args));
+      return {updated: true, configuration: next, message: 'The visible Dashboard category-spending chart was updated. Financial data was not changed.'};
+    },
+  },
 ];
 
 export interface WebMCPPageContext {
@@ -889,7 +1036,7 @@ const pageContexts: Array<{matches: (pathname: string) => boolean; label: string
     label: 'Dashboard',
     groups: [
       {label: 'Dashboard insights', names: ['get_spending_summary', 'search_transactions', 'get_accounts', 'list_categories']},
-      {label: 'Transaction actions', names: ['get_transaction', 'create_transaction', 'update_transaction', 'delete_transaction']},
+      {label: 'Chart presentation', names: ['configure_cashflow_chart', 'configure_category_spending_chart']},
     ],
   },
   {

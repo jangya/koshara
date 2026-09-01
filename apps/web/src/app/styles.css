@@ -25,6 +25,11 @@ body {
   min-width: 0;
 }
 
+.dashboard-category-pie-chart {
+  height: calc(var(--spacing-12) * 5);
+  min-width: 0;
+}
+
 .dashboard-primary-grid {
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
 }
@@ -51,6 +56,13 @@ body {
 .dashboard-chart-tooltip {
   max-width: calc(100% - var(--spacing-2));
   outline: none;
+}
+
+.dashboard-agent-chart-update {
+  padding: var(--spacing-1) var(--spacing-2);
+  border: var(--border-width) solid var(--color-border-blue);
+  border-radius: var(--radius-element);
+  background: var(--color-accent-muted);
 }
 
 .webmcp-tool-indicator {
@@ -238,6 +250,10 @@ body {
 
   .dashboard-cash-flow-chart {
     height: calc(var(--spacing-12) * 5);
+  }
+
+  .dashboard-category-pie-chart {
+    height: calc(var(--spacing-12) * 4);
   }
 
   .dashboard-primary-grid {

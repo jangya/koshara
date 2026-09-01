@@ -113,9 +113,9 @@ export default function HomePage() {
                 textWrap="pretty"
                 as="p"
               >
-                Track spending visually, ask your preferred AI for insights,
-                and hand off tedious tasks like statement imports — all using
-                the same Koshara data.
+                Track spending visually, ask your preferred AI for insights, and
+                hand off tedious tasks like statement imports — all using the
+                same Koshara data.
               </Text>
               <HStack
                 gap={3}
@@ -209,8 +209,9 @@ export default function HomePage() {
                 Try the statement workflow
               </Heading>
               <Text color="secondary" as="p">
-                Use the sample statement to experience one complete WebMCP
-                workflow from AI analysis to Koshara review.
+                <b>Data stores in local storage.</b> Use the sample statement to
+                experience one complete WebMCP workflow from AI analysis to
+                Koshara review.
               </Text>
             </VStack>
 
@@ -224,11 +225,12 @@ export default function HomePage() {
                   <VStack gap={2}>
                     <Heading level={3}>Get the sample statement</Heading>
                     <Text color="secondary" as="p">
-                      A synthetic July 2026 bank statement made for this demo.
+                      A synthetic June 2026 credit card statement made for this
+                      demo.
                     </Text>
                   </VStack>
                   <Link
-                    href="/koshara_demo_bank_statement_july_2026.pdf"
+                    href="/koshara_demo_credit_card_statement_june_2026.pdf"
                     download
                     isStandalone
                     className="landing-cta landing-cta-secondary landing-cta-full"

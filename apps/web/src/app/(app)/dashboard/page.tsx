@@ -9,6 +9,7 @@ import {Text} from '@astryxdesign/core/Text';
 import {Suspense, useEffect, useMemo, useState} from 'react';
 
 import {DashboardAccounts} from '@/components/dashboard-accounts';
+import {DashboardAgentPrompts} from '@/components/dashboard-agent-prompts';
 import {DashboardBudgetAttention} from '@/components/dashboard-budget-attention';
 import {DashboardCategorySpending} from '@/components/dashboard-category-spending';
 import {DashboardRecentTransactions} from '@/components/dashboard-recent-transactions';
@@ -31,6 +32,22 @@ function useUpdateNotice(lastUpdatedAt: string | null) {
   }, [lastUpdatedAt]);
 
   return lastUpdatedAt !== null && dismissedUpdate !== lastUpdatedAt;
+}
+
+function cashflowPrompts(period: string) {
+  return [
+    'Analyze why my spending increased over the last three months. Update the cash-flow chart with the most useful comparison and highlight the causes.',
+    `Compare income and spending for ${period}. Update the cash-flow chart to make any unusual dates easy to see.`,
+    'Show my credit-card spending trend for the last three months and highlight the largest spikes.',
+  ];
+}
+
+function categoryPrompts(period: string) {
+  return [
+    'Find the categories driving my recent spending increase. Update the category chart and highlight the biggest contributors.',
+    `Explain my spending mix for ${period}. Update the category chart to focus on the categories that need attention.`,
+    'Show which categories are near or over budget and highlight them in the category chart.',
+  ];
 }
 
 function DashboardContent() {
@@ -69,18 +86,21 @@ function DashboardContent() {
         </Grid>
 
         <Grid className="dashboard-primary-grid" gap={5}>
-          <IncomeSpendingChart points={view.timeline} period={period} />
-          <DashboardBudgetAttention items={view.budgetAttention} period={period} />
+          <IncomeSpendingChart state={state} range={range} />
+          <DashboardAgentPrompts prompts={cashflowPrompts(period)} />
+        </Grid>
+
+        <Grid className="dashboard-primary-grid" gap={5}>
+          <DashboardCategorySpending
+            state={state}
+            range={range}
+            preset={preset}
+          />
+          <DashboardAgentPrompts prompts={categoryPrompts(period)} />
         </Grid>
 
         <Grid columns={{minWidth: 320, max: 2, repeat: 'fit'}} gap={5}>
-          <DashboardCategorySpending
-            rows={view.categories}
-            totalSpendingMinor={view.totalCategorizedSpendingMinor}
-            range={range}
-            preset={preset}
-            period={period}
-          />
+          <DashboardBudgetAttention items={view.budgetAttention} period={period} />
           <DashboardAccounts accounts={view.accounts} />
         </Grid>
 
