@@ -1,18 +1,27 @@
 import type {NextConfig} from 'next';
 
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self' data:",
-  "connect-src 'self' ws: wss:",
-  "worker-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join('; ');
+export function createContentSecurityPolicy(environment: string | undefined) {
+  const isDevelopment = environment === 'development';
+  const connectSource = isDevelopment
+    ? "connect-src 'self' ws://localhost:* ws://127.0.0.1:*"
+    : "connect-src 'self'";
+
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ''}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    connectSource,
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+}
+
+const contentSecurityPolicy = createContentSecurityPolicy(process.env.NODE_ENV);
 
 const nextConfig: NextConfig = {
   experimental: {
