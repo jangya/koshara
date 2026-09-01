@@ -4,43 +4,20 @@
 
 - Node.js 22 or newer
 - pnpm 11.9.0 or newer
-- PostgreSQL (Supabase is the production target)
-- a Clerk development application with Google sign-in and Organisations enabled
-- a private Cloudflare R2 bucket only when exercising the production storage provider
-- a separate Google Cloud web OAuth client with the Gmail API enabled when exercising Gmail discovery
+- Google Chrome for the configured Playwright projects
 
-Install with `pnpm install`, copy `apps/web/.env.example` to `apps/web/.env.local`, and set the Clerk/application/PostgreSQL values. Local PDF imports use:
-
-- `DOCUMENT_STORAGE_DRIVER=local`
-- `LOCAL_DOCUMENT_STORAGE_PATH=.local/private-documents`
-
-The relative storage path resolves beneath `apps/web`, is ignored by Git, and must remain outside `public`, source directories, and tracked content. It is development/test-only; the application rejects the local driver when `NODE_ENV=production`. Never put real statements in tracked directories.
-
-To exercise the production-compatible Cloudflare provider, set `DOCUMENT_STORAGE_DRIVER=r2` and configure:
-
-- `R2_ACCOUNT_ID`: 32-character lowercase Cloudflare account ID
-- `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`: bucket-scoped S3 API credentials
-- `R2_BUCKET_NAME`: private bucket name
-- `R2_ENDPOINT`: exact `https://<account-id>.r2.cloudflarestorage.com` endpoint
-
-Manual Gmail discovery additionally requires:
-
-- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: credentials for a dedicated web OAuth client, separate from Clerk sign-in
-- `GOOGLE_OAUTH_REDIRECT_URI`: exactly `${NEXT_PUBLIC_APP_URL}/gmail/oauth/callback`, also registered exactly in Google Cloud
-- `GMAIL_TOKEN_ENCRYPTION_KEY`: exactly 32 random bytes encoded as canonical base64 (for example, generate once with `openssl rand -base64 32` and store only in the environment secret manager)
-
-Enable the Gmail API and configure the OAuth consent screen to request only `https://www.googleapis.com/auth/gmail.readonly`. Scheduled discovery and `CRON_SECRET` remain unset. Never put real production credentials, codes, tokens, encryption keys, identities, message metadata, or statements in fixtures, tests, screenshots, or logs.
-
-## Database workflow
+Install and start the app:
 
 ```bash
-pnpm db:generate
-pnpm db:migrate
+pnpm install
+pnpm dev
 ```
 
-Inspect generated SQL before applying it. Never edit or replace a migration already applied to a shared database; add a new migration.
+No `.env` file, database, authentication tenant, storage bucket, or Google project is required.
 
-## Daily checks
+## Workspace commands
+
+Run these from the repository root:
 
 ```bash
 pnpm lint
@@ -48,24 +25,29 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm test:e2e
-pnpm audit --audit-level high
 ```
 
-PGlite integration tests apply every migration and use synthetic rows. PDF/Gmail tests construct synthetic files, provider JSON, tokens, and encrypted envelopes in memory; do not add real statements, mail, identities, passwords, codes, or credentials. The public Playwright suite uses no household identity. Authenticated Gmail automation requires disposable Google, Clerk, and PostgreSQL resources plus either isolated local storage or disposable R2 resources.
+The first four commands run against the pnpm workspace. Browser tests start the Next.js development server and cover desktop and mobile Chrome.
 
-## Import fixtures and limits
+## Source map
 
-- CSV: synthetic UTF-8 comma-delimited files only; one to five files, 2 MiB and 5,000 data rows each.
-- PDF: one synthetic text-based file, 10 MiB, 100 pages, 5,000 extracted rows, 100 positional columns, and 15-second extraction limit.
-- Dates: `DD/MM/YYYY`, `MM/DD/YYYY`, or `YYYY-MM-DD` selected explicitly.
-- Amounts: period decimal separator; no embedded currency symbols.
-- Password-protected PDF tests must generate their fixture/password in test code and assert the password never reaches storage/repository inputs or error messages.
-- Gmail discovery: one explicit request per connection per minute, at most 25 matching messages and 50 bounded PDF descriptors; no automatic scheduling or page-token traversal.
-- Gmail attachment bytes: at most 10 MiB decoded, fetched only for manual import, then passed through the same PDF validation/extraction/storage limits above.
+- `apps/web/src/app`: routes, root runtime, and app-level styles.
+- `apps/web/src/components`: Astryx-based UI and WebMCP registration.
+- `apps/web/src/lib/koshara-store.ts`: local state, validation, mutations, and persistence.
+- `apps/web/src/lib/koshara-seed.ts`: synthetic rolling demo dataset.
+- `apps/web/src/lib/webmcp-tool-registry.ts`: structured tool schemas and handlers.
+- `apps/web/e2e`: browser and security-header coverage.
+- `apps/web/public`: static demo assets, including the synthetic statement.
 
-## Astryx workflow
+## Data during development
 
-The generated `AGENTS.md` is the local Astryx contract. Discover components before changing UI:
+The store uses the browser key `koshara.finance.v1`. Use the application's reset control or clear the site's local storage to return to the seed data.
+
+Do not add real financial statements, account identifiers, credentials, mailbox data, or local-storage exports to fixtures or screenshots. The committed PDF is synthetic and visibly labelled.
+
+## UI changes
+
+`AGENTS.md` is the Astryx implementation contract. Discover primitives before changing interface code:
 
 ```bash
 pnpm exec astryx build "<interface idea>"
@@ -73,4 +55,8 @@ pnpm exec astryx template <name> --skeleton
 pnpm exec astryx component <Name>
 ```
 
-Use Astryx layout, typography, form, and feedback primitives; keep the shell responsive and keyboard-operable.
+Use Astryx components for structure and interaction, design tokens for custom CSS, and verify both desktop and mobile behavior.
+
+## Dependency changes
+
+Add runtime dependencies to `apps/web/package.json`; keep repository-only tooling at the root. Regenerate `pnpm-lock.yaml` with `pnpm install` and run the complete quality checks before committing.
