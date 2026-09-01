@@ -1,1 +1,0 @@
-ALTER TABLE "gmail_connections" ADD COLUMN "last_discovery_at" timestamp with time zone;

@@ -7,10 +7,9 @@ test-results/
 .env
 .env.local
 .env.*.local
-!.env.example
 *.pem
 *.key
 .DS_Store
 pnpm-debug.log*
 .pnpm-store/
-/apps/web/.local/private-documents/
+/apps/web/.local/
