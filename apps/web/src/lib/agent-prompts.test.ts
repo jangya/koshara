@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 
 import {
+  CASHFLOW_CHART_DEMO_PROMPT,
   buildCategoryPrompts,
   buildDashboardPrompts,
   buildDataDrivenCategoryPrompts,
@@ -44,6 +45,7 @@ describe('external AI-agent prompt suggestions', () => {
     expect(prompts).toContain('Categorize my 5 uncategorized transactions from 1–31 August 2026.');
     expect(prompts).toContain('Explain why Shopping exceeded its ₹9,000 budget for 1–31 August 2026.');
     expect(prompts).toContain('Why has Dining spending increased over the last three months?');
+    expect(prompts[0]).toBe(CASHFLOW_CHART_DEMO_PROMPT);
     expect(prompts.some((prompt) => prompt.includes('needs-review'))).toBe(true);
   });
 

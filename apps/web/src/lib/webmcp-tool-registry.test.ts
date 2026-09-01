@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest';
 
+import {getCashflowChartConfiguration, resetCashflowChart} from './cashflow-chart';
 import {getKosharaState} from './koshara-store';
 import {getWebMCPPageContext, KOSHARA_WEBMCP_TOOL_GROUPS, KOSHARA_WEBMCP_TOOLS} from './webmcp-tool-registry';
 
@@ -195,5 +196,61 @@ describe('spending insight WebMCP facts', () => {
   it('rejects invalid or reversed date ranges at the tool boundary', () => {
     expect(() => tool('get_spending_summary').execute({from: 'not-a-date', to: '2026-08-31'})).toThrow('from and to must be valid');
     expect(() => tool('get_spending_summary').execute({from: '2026-09-01', to: '2026-08-31'})).toThrow('from must be on or before to');
+  });
+});
+
+describe('cash-flow chart WebMCP presentation tool', () => {
+  it('is available only on Dashboard and exposes every supported configuration field', () => {
+    const dashboard = getWebMCPPageContext('/dashboard');
+    const transactions = getWebMCPPageContext('/transactions');
+    const configureTool = tool('configure_cashflow_chart');
+    const schema = configureTool.inputSchema as {properties: Record<string, unknown>};
+
+    expect(dashboard?.tools.map(({name}) => name)).toContain('configure_cashflow_chart');
+    expect(transactions?.tools.map(({name}) => name)).not.toContain('configure_cashflow_chart');
+    expect(configureTool.annotations.readOnlyHint).toBe(false);
+    expect(Object.keys(schema.properties)).toEqual(expect.arrayContaining([
+      'mode',
+      'grouping',
+      'dateRange',
+      'accountIds',
+      'categoryIds',
+      'comparePreviousPeriod',
+      'highlightedDates',
+      'highlightedCategoryIds',
+      'insightTitle',
+    ]));
+  });
+
+  it('updates only the temporary visible-chart configuration', async () => {
+    resetCashflowChart();
+    const before = structuredClone(getKosharaState());
+
+    const result = await tool('configure_cashflow_chart').execute({
+      mode: 'spending',
+      grouping: 'weekly',
+      dateRange: {from: '2026-06-01', to: '2026-08-31'},
+      accountIds: ['icici-card'],
+      categoryIds: ['dining', 'shopping'],
+      comparePreviousPeriod: true,
+      highlightedDates: ['2026-08-22'],
+      highlightedCategoryIds: ['shopping'],
+      insightTitle: 'Shopping and dining drove the increase',
+    });
+
+    expect(result).toMatchObject({updated: true, configuration: {mode: 'spending', grouping: 'weekly'}});
+    expect(getCashflowChartConfiguration()).toMatchObject({
+      mode: 'spending',
+      accountIds: ['icici-card'],
+      highlightedCategoryIds: ['shopping'],
+    });
+    expect(getKosharaState()).toEqual(before);
+    resetCashflowChart();
+  });
+
+  it('rejects invalid ranges and unknown filters', () => {
+    expect(() => tool('configure_cashflow_chart').execute({dateRange: {from: '2026-09-01', to: '2026-08-01'}})).toThrow('from must be on or before to');
+    expect(() => tool('configure_cashflow_chart').execute({accountIds: ['missing']})).toThrow('Unknown accountIds');
+    expect(() => tool('configure_cashflow_chart').execute({categoryIds: ['missing']})).toThrow('Unknown categoryIds');
   });
 });
