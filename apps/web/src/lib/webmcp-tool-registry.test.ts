@@ -9,6 +9,14 @@ function tool(name: string) {
   return found;
 }
 
+function currentMonthRange(referenceDate = new Date()) {
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+  const from = new Date(year, month, 1, 12).toISOString().slice(0, 10);
+  const to = new Date(year, month + 1, 0, 12).toISOString().slice(0, 10);
+  return {from, to};
+}
+
 describe('statement import WebMCP tools', () => {
   it('checks a batch without changing transactions', async () => {
     const existing = getKosharaState().transactions[0];
@@ -145,7 +153,8 @@ describe('category budget WebMCP contracts', () => {
 
 describe('spending insight WebMCP facts', () => {
   it('keeps legacy summary fields and adds budgets, trends, attention, merchants, recurring activity, and duplicates', async () => {
-    const result = await tool('get_spending_summary').execute({from: '2026-08-01', to: '2026-08-31'}) as {
+    const range = currentMonthRange();
+    const result = await tool('get_spending_summary').execute(range) as {
       currency: string;
       from: string;
       to: string;
@@ -166,7 +175,7 @@ describe('spending insight WebMCP facts', () => {
       possibleDuplicateGroups: Array<{transactionIds: string[]}>;
     };
 
-    expect(result).toMatchObject({currency: 'INR', from: '2026-08-01', to: '2026-08-31'});
+    expect(result).toMatchObject({currency: 'INR', ...range});
     expect(result.totalSpend).toBeGreaterThan(0);
     expect(result.transactionCount).toBeGreaterThan(0);
     expect(result.totalsByCategory.length).toBeGreaterThan(0);
