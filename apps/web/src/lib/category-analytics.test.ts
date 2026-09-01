@@ -99,7 +99,7 @@ describe('category analytics', () => {
       .rows.find(({category}) => category.id === 'shopping')!;
 
     expect(shopping).toMatchObject({spendingMinor: 1_500_000, budgetLimitMinor: 1_800_000, remainingMinor: 300_000});
-    expect(shopping.budgetStatus?.label).toBe('Near limit');
+    expect(shopping.budgetStatus?.label).toBe('Watch');
   });
 });
 

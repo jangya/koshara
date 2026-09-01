@@ -17,6 +17,22 @@ for (const path of ['/dashboard', '/transactions', '/categories']) {
   });
 }
 
+for (const path of ['/accounts', '/statements']) {
+  test(`${path} hydrates without a React mismatch`, async ({page}) => {
+    const hydrationErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error' && message.text().includes('Hydration failed')) {
+        hydrationErrors.push(message.text());
+      }
+    });
+
+    await page.goto(path);
+    await expect(page.getByRole('heading', {level: 1})).toBeVisible();
+
+    expect(hydrationErrors).toEqual([]);
+  });
+}
+
 test('keeps Categories prompts in the WebMCP pill and exposes category search', async ({page}) => {
   await page.goto('/categories');
 

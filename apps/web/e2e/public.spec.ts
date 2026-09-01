@@ -8,7 +8,7 @@ test('presents the human and AI WebMCP experiences on the landing page', async (
   await expect(page.getByRole('link', {name: 'Try the demo'})).toBeVisible();
   await expect(page.getByRole('link', {name: 'Explore dashboard'})).toBeVisible();
   await expect(page.getByRole('heading', {name: 'A simple handoff between you, your AI, and Koshara.'})).toBeVisible();
-  await expect(page.getByRole('heading', {name: 'Two ways your AI can work with Koshara'})).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'See how your AI can work with Koshara'})).toBeVisible();
   await expect(page.getByRole('heading', {name: 'Understand your finances'})).toBeVisible();
   await expect(page.getByRole('heading', {name: 'Import a statement'})).toBeVisible();
   await expect(page.getByRole('heading', {name: 'Try the statement workflow'})).toBeVisible();
@@ -26,6 +26,14 @@ test('presents the human and AI WebMCP experiences on the landing page', async (
   await expect(page.getByRole('heading', {name: 'A dashboard for you. Structured capabilities for your AI.'})).toBeVisible();
   await expect(page.getByRole('heading', {name: 'For you', exact: true})).toBeVisible();
   await expect(page.getByRole('heading', {name: 'For your AI', exact: true})).toBeVisible();
+});
+
+test('serves the synthetic sample statement as a PDF', async ({request}) => {
+  const response = await request.get('/koshara_demo_bank_statement_july_2026.pdf');
+
+  expect(response.ok()).toBe(true);
+  expect(response.headers()['content-type']).toContain('application/pdf');
+  expect((await response.body()).subarray(0, 5).toString()).toBe('%PDF-');
 });
 
 test('keeps the landing page within the viewport', async ({page}) => {

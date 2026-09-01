@@ -53,6 +53,12 @@ body {
   outline: none;
 }
 
+.webmcp-tool-indicator {
+  position: fixed;
+  inset-inline-end: var(--spacing-3);
+  bottom: var(--spacing-3);
+}
+
 body {
   color: var(--color-text-primary);
   font-family: var(--font-family-body);
@@ -239,6 +245,7 @@ body {
   }
 
   .webmcp-tool-indicator {
+    position: static;
     justify-content: flex-end;
     padding: var(--spacing-3);
   }

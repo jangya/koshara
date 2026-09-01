@@ -8,7 +8,6 @@ import {Popover} from '@astryxdesign/core/Popover';
 import {HStack, VStack} from '@astryxdesign/core/Stack';
 import {StatusDot} from '@astryxdesign/core/StatusDot';
 import {Text} from '@astryxdesign/core/Text';
-import {useMediaQuery} from '@astryxdesign/core/hooks';
 import {usePathname, useSearchParams} from 'next/navigation';
 import {useEffect, useMemo, useState} from 'react';
 
@@ -37,7 +36,6 @@ export function WebMCPTools() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const state = useKosharaState();
-  const isMobile = useMediaQuery('(max-width: 48rem)');
   const serializedSearchParams = searchParams.toString();
   const pageContext = useMemo(() => getWebMCPPageContext(pathname), [pathname]);
   const prompts = useMemo(() => {
@@ -106,13 +104,7 @@ export function WebMCPTools() {
     : 'Connect your AI agent to this browser tab to work with Koshara.';
 
   return (
-    <HStack
-      as="aside"
-      className="webmcp-tool-indicator"
-      style={isMobile
-        ? {position: 'static'}
-        : {position: 'fixed', insetInlineEnd: 'var(--spacing-3)', bottom: 'var(--spacing-3)'}}
-    >
+    <HStack as="aside" className="webmcp-tool-indicator">
       <Popover
         placement="above"
         alignment="end"
