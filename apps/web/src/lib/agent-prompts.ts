@@ -85,7 +85,7 @@ export function buildDataDrivenCategoryPrompts(context: Pick<DataDrivenCategoryP
   return prompts;
 }
 
-export const STATEMENT_IMPORT_PROMPT = 'Import the attached statement into Koshara using the WebMCP tools available on the Statements page. Use existing accounts and categories. Prepare the transactions for review, identify possible duplicates, group related statement rows where appropriate, and do not add anything to my Transactions until I approve the import.';
+export const STATEMENT_IMPORT_PROMPT = 'Import the attached demo statement into Koshara as a staged review. First inspect the import context, then create an import session and stage all parsed transactions in one batch. Use existing accounts and categories, mark uncertain classifications as needs review, identify possible duplicates, and propose related transaction groups when appropriate. Do not create live transactions or approve the import. Return control to me for review in Koshara. Prefer WebMCP tools instead of browser automation.';
 
 export function getPageAgentPrompts(pathname: string) {
   if (pathname === '/dashboard') {

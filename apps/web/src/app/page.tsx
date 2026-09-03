@@ -247,18 +247,18 @@ export default function HomePage() {
                   </Text>
                   <Icon icon={LayoutDashboard} color="accent" size="lg" />
                   <VStack gap={2}>
-                    <Heading level={3}>Open Koshara</Heading>
+                    <Heading level={3}>Open Statements</Heading>
                     <Text color="secondary" as="p">
-                      Keep the dashboard open so your agent can use the
-                      available WebMCP tools.
+                      The Statements page exposes the WebMCP tools your agent
+                      uses to inspect, create, and stage a statement import.
                     </Text>
                   </VStack>
                   <Link
-                    href="/dashboard"
+                    href="/statements"
                     isStandalone
                     className="landing-cta landing-cta-primary landing-cta-full"
                   >
-                    Open demo dashboard
+                    Open Statements
                   </Link>
                 </VStack>
               </Card>
