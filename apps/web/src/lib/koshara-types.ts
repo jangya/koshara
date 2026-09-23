@@ -1,7 +1,8 @@
 export type AccountType = 'bank' | 'credit-card' | 'cash' | 'wallet' | 'other';
 export type TransactionKind = 'expense' | 'income';
 export type ReviewStatus = 'confirmed' | 'needs_review';
-export type TransactionSource = 'demo' | 'manual' | 'agent';
+export type TransactionSource = 'demo' | 'manual' | 'agent' | 'pdf';
+import type {ReconciliationResult} from './statement-parser/types';
 export type CategoryColor = 'blue' | 'cyan' | 'green' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'yellow';
 export type ImportSessionStatus = 'draft' | 'ready_for_review' | 'imported' | 'cancelled';
 export type ImportItemStatus = 'ready' | 'needs_attention' | 'possible_duplicate' | 'skipped';
@@ -53,6 +54,8 @@ export interface ImportItem {
   included: boolean;
   note: string;
   confidence?: number;
+  source?: TransactionSource;
+  reviewApproved?: boolean;
   duplicateTransactionIds: string[];
   duplicateApproved: boolean;
   sourceReferences: string[];
@@ -79,6 +82,7 @@ export interface ImportSession {
   items: ImportItem[];
   groups: ImportGroup[];
   approvedTransactionIds: string[];
+  pdfParse?: {reconciliation: ReconciliationResult; unparsedRows: number; reconstructedRows: number};
 }
 
 export interface KosharaState {

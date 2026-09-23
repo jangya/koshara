@@ -21,6 +21,10 @@ An external AI prepares structured work through Koshara's page-specific WebMCP t
 
 ### Statement parsing, staging, and human approval
 
+For a local import, open **Statements**, choose an existing account, and select a digitally generated PDF. Koshara reconstructs the rows in the browser, shows reconciliation when totals are available, and stages the parsed transactions in the same review workflow. Scanned PDFs are not supported yet. The PDF and extracted page text are not uploaded or saved.
+
+The original WebMCP-assisted path is also available:
+
 1. Download the [synthetic demo statement](https://koshara.vercel.app/koshara_demo_credit_card_statement_june_2026.pdf), open [Statements](https://koshara.vercel.app/statements), and attach the PDF to a WebMCP-capable AI.
 2. Use this prompt:
 
@@ -45,7 +49,7 @@ The app stays in `apps/web`; the repository root owns workspace commands and Ast
 
 1. Open the landing page and dashboard.
 2. Use the WebMCP tool indicator to inspect the tools exposed for the current page.
-3. Ask a compatible AI agent to inspect spending, update finance data, or stage transactions from a statement.
+3. Ask a compatible AI agent to inspect spending or update finance data, or parse a PDF locally on Statements.
 4. Review staged rows on **Statements** before approving them.
 5. Reset the demo from the UI when you need a clean local dataset.
 

@@ -22,10 +22,12 @@ import {TextInput} from '@astryxdesign/core/TextInput';
 import {useMemo, useState} from 'react';
 
 import {Page} from '@/components/page';
+import {PdfStatementImport, ReconciliationSummary} from '@/components/pdf-statement-import';
 import {copyPrompt, STATEMENT_IMPORT_PROMPT} from '@/lib/agent-prompts';
 import {formatMinorCurrencySummary, formatTransactionDate} from '@/lib/format';
 import {
   approveStatementImport,
+  cancelStatementImport,
   resolveStatementImportGroup,
   updateStatementImportItem,
   useKosharaState,
@@ -49,19 +51,29 @@ function ImportItemRow({item, accounts, categories, isReadOnly, onEditDescriptio
   onEditDescription: (item: ImportItem) => void;
   onError: (message: string) => void;
 }) {
+  const [isUpdating, setIsUpdating] = useState(false);
   async function update(updates: Parameters<typeof updateStatementImportItem>[2]) {
+    setIsUpdating(true);
     try {
       await updateStatementImportItem(item.importSessionId, item.id, updates);
     } catch (error) {
       onError(error instanceof Error ? error.message : 'The staged transaction could not be updated.');
+    } finally {
+      setIsUpdating(false);
     }
   }
 
+  const actionDisabled = isReadOnly || isUpdating;
   const primaryAction = item.status === 'possible_duplicate'
-    ? <Button label="Include anyway" size="sm" variant="secondary" isDisabled={isReadOnly} onClick={() => void update({includeDuplicate: true})} />
+    ? <Button label="Include anyway" size="sm" variant="secondary" isDisabled={actionDisabled} onClick={() => void update({includeDuplicate: true})} />
     : item.status === 'skipped'
-      ? <Button label="Restore" size="sm" variant="secondary" isDisabled={isReadOnly} onClick={() => void update({status: 'ready'})} />
-      : <Button label="Skip" size="sm" variant="ghost" isDisabled={isReadOnly} onClick={() => void update({status: 'skipped'})} />;
+      ? <Button label="Restore" size="sm" variant="secondary" isDisabled={actionDisabled} onClick={() => void update({status: 'ready'})} />
+      : <Button label="Skip" size="sm" variant="ghost" isDisabled={actionDisabled} onClick={() => void update({status: 'skipped'})} />;
+  const approvalAction = item.source === 'pdf' && item.status !== 'skipped' && item.status !== 'possible_duplicate'
+    ? item.status === 'ready'
+      ? <Button label="Reopen review" size="sm" variant="secondary" isDisabled={actionDisabled} onClick={() => void update({approve: false})} />
+      : <Button label="Move to Ready" size="sm" variant="secondary" isDisabled={actionDisabled || item.proposedCategoryId === 'uncategorized'} onClick={() => void update({approve: true})} />
+    : null;
 
   return (
     <Item
@@ -89,23 +101,27 @@ function ImportItemRow({item, accounts, categories, isReadOnly, onEditDescriptio
             onChange={(value) => void update({proposedCategoryId: value})}
             options={categories.map(({id, name}) => ({value: id, label: name}))}
             size="sm"
-            isDisabled={isReadOnly}
+            isDisabled={actionDisabled}
           />
+          {item.source === 'pdf' ? <Selector label="Direction" value={item.kind}
+            onChange={(value) => void update({kind: value as ImportItem['kind']})}
+            options={[{value: 'expense', label: 'Debit'}, {value: 'income', label: 'Credit'}]}
+            size="sm" isDisabled={actionDisabled} /> : null}
           <Selector
             label="Account"
             value={item.proposedAccountId}
             onChange={(value) => void update({proposedAccountId: value})}
             options={accounts.map(({id, name}) => ({value: id, label: name}))}
             size="sm"
-            isDisabled={isReadOnly}
+            isDisabled={actionDisabled}
           />
-          <Button label="Edit description" variant="ghost" size="sm" isDisabled={isReadOnly} onClick={() => onEditDescription(item)} />
+          <Button label="Edit description" variant="ghost" size="sm" isDisabled={actionDisabled} onClick={() => onEditDescription(item)} />
         </HStack>
       }
       endContent={
         <VStack gap={2} hAlign="end">
           <Text hasTabularNumbers>{item.kind === 'expense' ? '−' : '+'}{formatMinorCurrencySummary(item.amountMinor, 'INR')}</Text>
-          {primaryAction}
+          <HStack gap={1} wrap="wrap" hAlign="end">{approvalAction}{primaryAction}</HStack>
         </VStack>
       }
       align="start"
@@ -117,15 +133,16 @@ function ImportItemRow({item, accounts, categories, isReadOnly, onEditDescriptio
 export default function StatementsPage() {
   const state = useKosharaState();
   const session = state.importSessions.find(({status}) => status === 'draft' || status === 'ready_for_review')
-    ?? state.importSessions[0]
-    ?? null;
-  const [filter, setFilter] = useState<ReviewFilter>('needs_attention');
+    ?? (state.importSessions[0]?.status === 'imported' ? state.importSessions[0] : null);
+  const [filter, setFilter] = useState<ReviewFilter>('all');
   const [copyFeedback, setCopyFeedback] = useState('');
   const [error, setError] = useState('');
   const [editingItem, setEditingItem] = useState<ImportItem | null>(null);
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [approveOpen, setApproveOpen] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const counts = useMemo(() => {
     const items = session?.items ?? [];
@@ -174,6 +191,7 @@ export default function StatementsPage() {
         description="Import bank and credit-card statements and review them before adding them to Koshara."
       >
         <VStack gap={5}>
+          <PdfStatementImport accounts={state.accounts} activeSession={session?.status === 'ready_for_review' ? session : null} />
           {!session ? (
             <Section>
               <VStack gap={4}>
@@ -207,6 +225,12 @@ export default function StatementsPage() {
           {session ? (
             <Section padding={0}>
               <VStack gap={0}>
+                {session.pdfParse ? (
+                  <VStack gap={3} padding={4}>
+                    <Text>{session.pdfParse.reconstructedRows} PDF transactions reconstructed{session.pdfParse.unparsedRows ? ` · ${session.pdfParse.unparsedRows} rows could not be parsed` : ''}.</Text>
+                    <ReconciliationSummary result={session.pdfParse.reconciliation} />
+                  </VStack>
+                ) : null}
                 <VStack gap={4} padding={4}>
                   <HStack gap={3} vAlign="center" wrap="wrap">
                     <StackItem size="fill">
@@ -323,9 +347,12 @@ export default function StatementsPage() {
                 >
                   <StackItem size="fill">
                     <Text type="supporting" color="secondary">
-                      Only ready rows and confirmed merges are imported. Skipped, duplicate, and unresolved rows stay out of Transactions.
+                      Only ready rows and confirmed merges are imported. PDF rows need a category and an explicit Move to Ready action. Skipped, duplicate, and unresolved rows stay out of Transactions.
                     </Text>
                   </StackItem>
+                  {session.status === 'draft' || session.status === 'ready_for_review' ? (
+                    <Button label="Cancel import" variant="secondary" onClick={() => setCancelOpen(true)} />
+                  ) : null}
                   <Button
                     label={session.status === 'imported' ? 'Import approved' : `Approve import${importableCount > 0 ? ` (${importableCount})` : ''}`}
                     variant="primary"
@@ -366,6 +393,31 @@ export default function StatementsPage() {
           }
         />
       </Dialog>
+
+      <AlertDialog
+        isOpen={cancelOpen}
+        onOpenChange={(open) => !open && !isCancelling && setCancelOpen(false)}
+        title="Cancel this statement import?"
+        description="The staged rows and review decisions for this statement will be discarded. Transactions already imported into Koshara will remain. You can then try another statement."
+        cancelLabel="Keep reviewing"
+        actionLabel="Discard staged rows"
+        actionVariant="destructive"
+        isActionLoading={isCancelling}
+        onAction={async () => {
+          if (!session) return;
+          setIsCancelling(true);
+          try {
+            await cancelStatementImport(session.id);
+            setCancelOpen(false);
+            setFilter('needs_attention');
+            setError('');
+          } catch (cancelError) {
+            setError(cancelError instanceof Error ? cancelError.message : 'The import could not be cancelled.');
+          } finally {
+            setIsCancelling(false);
+          }
+        }}
+      />
 
       <AlertDialog
         isOpen={approveOpen}

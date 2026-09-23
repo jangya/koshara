@@ -72,7 +72,7 @@ function simulateWriteDelay() {
 
 const accountTypes: AccountType[] = ['bank', 'credit-card', 'cash', 'wallet', 'other'];
 const reviewStatuses: ReviewStatus[] = ['confirmed', 'needs_review'];
-const transactionSources: TransactionSource[] = ['demo', 'manual', 'agent'];
+const transactionSources: TransactionSource[] = ['demo', 'manual', 'agent', 'pdf'];
 const accountColors: Account['color'][] = ['blue', 'green', 'orange'];
 const categoryColors: CategoryColor[] = ['green', 'orange', 'blue', 'purple', 'teal', 'pink', 'cyan', 'red', 'yellow'];
 
@@ -161,6 +161,13 @@ function normalizeState(value: KosharaState): KosharaState {
         ...session,
         items: Array.isArray(session.items) ? session.items.map((item) => ({
           ...item,
+          status: session.status === 'ready_for_review' && item.source === 'pdf' && item.status === 'ready' && item.reviewApproved !== true
+            ? 'needs_attention' as const
+            : item.status,
+          included: session.status === 'ready_for_review' && item.source === 'pdf' && item.status === 'ready' && item.reviewApproved !== true
+            ? false
+            : item.included,
+          reviewApproved: item.source === 'pdf' ? item.reviewApproved === true : item.reviewApproved,
           duplicateTransactionIds: Array.isArray(item.duplicateTransactionIds) ? item.duplicateTransactionIds : [],
           duplicateApproved: item.duplicateApproved ?? false,
           sourceReferences: Array.isArray(item.sourceReferences) ? item.sourceReferences : [],
@@ -190,7 +197,7 @@ export function validateTransaction(input: TransactionInput): TransactionValidat
   if (!snapshot.categories.some((category) => category.id === input.categoryId)) errors.push({field: 'categoryId', code: 'not_found', message: 'Category not found.'});
   if (input.kind !== 'expense' && input.kind !== 'income') errors.push({field: 'kind', code: 'invalid_kind', message: 'Type must be expense or income.'});
   if (input.reviewStatus && !reviewStatuses.includes(input.reviewStatus)) errors.push({field: 'reviewStatus', code: 'invalid_review_status', message: 'Review status must be confirmed or needs_review.'});
-  if (input.source && !transactionSources.includes(input.source)) errors.push({field: 'source', code: 'invalid_source', message: 'Source must be demo, manual, or agent.'});
+  if (input.source && !transactionSources.includes(input.source)) errors.push({field: 'source', code: 'invalid_source', message: 'Source must be demo, manual, agent, or pdf.'});
   if (input.confidence !== undefined && (!Number.isFinite(input.confidence) || input.confidence < 0 || input.confidence > 1)) {
     errors.push({field: 'confidence', code: 'invalid_confidence', message: 'Confidence must be between 0 and 1.'});
   }
@@ -494,7 +501,7 @@ function importItemInput(item: ImportItem): TransactionInput {
     categoryId: item.proposedCategoryId,
     notes: item.note,
     reviewStatus: item.proposedCategoryId === 'uncategorized' ? 'needs_review' : 'confirmed',
-    source: 'agent',
+    source: item.source ?? 'agent',
     confidence: item.confidence,
   };
 }
@@ -506,7 +513,7 @@ function deriveImportItem(item: ImportItem, options?: {restore?: boolean; duplic
     return {...item, duplicateApproved: false, status: 'possible_duplicate' as const, included: false};
   }
   const validation = validateTransaction(importItemInput(item));
-  if (!validation.valid || item.proposedCategoryId === 'uncategorized') {
+  if (!validation.valid || item.proposedCategoryId === 'uncategorized' || (item.source === 'pdf' && !item.reviewApproved)) {
     return {
       ...item,
       status: 'needs_attention' as const,
@@ -537,7 +544,16 @@ export async function createStatementImportSession(input: {sourceName: string; a
   return session;
 }
 
-export async function stageImportTransactions(sessionId: string, inputs: TransactionInput[]) {
+export async function cancelStatementImport(sessionId: string) {
+  await simulateWriteDelay();
+  const session = getImportSessionOrThrow(sessionId);
+  if (session.status !== 'draft' && session.status !== 'ready_for_review') {
+    throw new Error('This import session is no longer open for review.');
+  }
+  commit({...snapshot, importSessions: snapshot.importSessions.filter(({id}) => id !== sessionId)});
+}
+
+export async function stageImportTransactions(sessionId: string, inputs: TransactionInput[], options?: {pdfParse?: ImportSession['pdfParse']}) {
   await simulateWriteDelay();
   const session = getImportSessionOrThrow(sessionId);
   if (session.status === 'imported' || session.status === 'cancelled') throw new Error('This import session can no longer be changed.');
@@ -558,6 +574,8 @@ export async function stageImportTransactions(sessionId: string, inputs: Transac
       included: true,
       note: input.notes?.trim() ?? '',
       confidence: input.confidence,
+      source: input.source ?? 'agent',
+      reviewApproved: input.source !== 'pdf' || input.reviewStatus === 'confirmed',
       duplicateTransactionIds,
       duplicateApproved: false,
       sourceReferences: [],
@@ -565,19 +583,27 @@ export async function stageImportTransactions(sessionId: string, inputs: Transac
     if (input.reviewStatus === 'needs_review') return {...initial, status: 'needs_attention', included: false};
     return deriveImportItem(initial);
   });
-  const next = {...session, status: 'ready_for_review' as const, items: [...session.items, ...items]};
+  const next = {...session, status: 'ready_for_review' as const, items: [...session.items, ...items], pdfParse: options?.pdfParse ?? session.pdfParse};
   replaceImportSession(next);
   return next;
 }
 
-export async function updateStatementImportItem(sessionId: string, itemId: string, updates: Partial<Pick<ImportItem, 'description' | 'proposedAccountId' | 'proposedCategoryId' | 'note' | 'status'>> & {includeDuplicate?: boolean}) {
+export async function updateStatementImportItem(sessionId: string, itemId: string, updates: Partial<Pick<ImportItem, 'description' | 'kind' | 'proposedAccountId' | 'proposedCategoryId' | 'note' | 'status'>> & {includeDuplicate?: boolean; approve?: boolean}) {
   await simulateWriteDelay();
   const session = getImportSessionOrThrow(sessionId);
   if (session.status !== 'ready_for_review') throw new Error('This import session is not open for review.');
   const current = session.items.find((item) => item.id === itemId);
   if (!current) throw new Error('Import item not found.');
-  const {includeDuplicate, ...itemUpdates} = updates;
-  const edited = {...current, ...itemUpdates};
+  const {includeDuplicate, approve, ...itemUpdates} = updates;
+  if (approve !== undefined && current.source !== 'pdf') throw new Error('Explicit row approval is only available for PDF imports.');
+  if (approve && current.proposedCategoryId === 'uncategorized') throw new Error('Choose a category before approving this row.');
+  const changedFields = itemUpdates.description !== undefined || itemUpdates.kind !== undefined || itemUpdates.proposedAccountId !== undefined || itemUpdates.proposedCategoryId !== undefined || itemUpdates.status !== undefined;
+  const edited = {
+    ...current,
+    ...itemUpdates,
+    reviewApproved: current.source === 'pdf' && changedFields ? false : approve ?? current.reviewApproved,
+  };
+  if (approve && !validateTransaction(importItemInput(edited)).valid) throw new Error('Resolve the row validation issues before approving it.');
   const nextItem = itemUpdates.status === 'skipped'
     ? {...edited, status: 'skipped' as const, included: false}
     : deriveImportItem(edited, {restore: current.status === 'skipped', duplicateOverride: includeDuplicate});
@@ -646,7 +672,7 @@ export async function approveStatementImport(sessionId: string) {
     categoryId: group.proposedCategoryId,
     notes: `Merged from ${group.itemIds.length} statement rows`,
     reviewStatus: 'confirmed',
-    source: 'agent',
+    source: session.items.find((item) => group.itemIds.includes(item.id))?.source ?? 'agent',
   }));
   const inputs = [...groupInputs, ...itemInputs];
   inputs.forEach(assertValidTransaction);

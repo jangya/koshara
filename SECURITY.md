@@ -4,6 +4,8 @@
 
 - The repository contains no authentication, database, mailbox, cloud-storage, or provider credentials.
 - The app makes no Koshara-controlled server upload of statements or finance data.
+- Local PDF import reads digitally generated PDFs in the browser with PDF.js. PDF bytes and extracted text items stay in memory and are not stored, logged, sent to analytics, or passed to an AI service. The worker receives only the extracted positional text items for local reconstruction.
+- Staging a local PDF saves normalized transaction fields, source page references, and a compact reconciliation result to the existing browser local-storage snapshot so review survives reloads. Clearing site data removes them. The statement UI has no analytics or session-replay integration.
 - Seed records and the sample PDF are synthetic and contain no real financial information.
 - Amounts are handled as integer minor units internally.
 - Store mutations validate required values, supported enums, dates, references, and positive amounts.
@@ -15,7 +17,7 @@
 
 Finance data is stored under `koshara.finance.v1` in the browser's local storage. It is not encrypted by Koshara and is accessible to scripts running on the same origin. Anyone with access to the browser profile or developer tools may be able to read or change it.
 
-This model is appropriate only for the hackathon demo. Do not enter real financial or identity data. Clearing the site's browser data removes local changes, and there is no recovery or remote backup.
+This local-storage model is intended for a single trusted browser profile. Staged transaction descriptions and amounts persist unencrypted after PDF import; clear site data to remove local changes. There is no recovery or remote backup.
 
 ## External AI boundary
 
@@ -32,7 +34,7 @@ Do not treat this architecture as production-ready. Adding Clerk, Supabase, Gmai
 - server-enforced identity and authorization;
 - tenant isolation and database row-level policies;
 - schema migrations, backups, retention, deletion, and audit controls;
-- strict upload limits and isolated hostile-document parsing;
+- strict upload limits and further hostile-document parsing safeguards;
 - least-privilege OAuth, encrypted tokens, callback and replay defenses;
 - secrets management, logging redaction, monitoring, and incident response;
 - a fresh threat model, dependency audit, and end-to-end security testing.
