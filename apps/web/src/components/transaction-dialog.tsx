@@ -7,6 +7,7 @@ import {Dialog, DialogHeader} from '@astryxdesign/core/Dialog';
 import {FormLayout} from '@astryxdesign/core/FormLayout';
 import {Layout, LayoutContent, LayoutFooter} from '@astryxdesign/core/Layout';
 import {NumberInput} from '@astryxdesign/core/NumberInput';
+import {Heading} from '@astryxdesign/core/Heading';
 import {Selector} from '@astryxdesign/core/Selector';
 import {HStack} from '@astryxdesign/core/Stack';
 import {TextArea} from '@astryxdesign/core/TextArea';
@@ -20,23 +21,31 @@ function today() {
   return new Date().toISOString().slice(0, 10) as ISODateString;
 }
 
-function TransactionForm({
+export function TransactionForm({
   transaction,
   accounts,
   categories,
   onClose,
+  inline = false,
+  expenseOnly = false,
+  initialExpense,
+  onSaved,
 }: {
   transaction: Transaction | null;
   accounts: Account[];
   categories: Category[];
   onClose: () => void;
+  inline?: boolean;
+  expenseOnly?: boolean;
+  initialExpense?: {amount: number | null; date: string | null; categoryId: string | null; description: string};
+  onSaved?: (transaction: Transaction) => void;
 }) {
-  const [date, setDate] = useState<ISODateString>((transaction?.date ?? today()) as ISODateString);
-  const [description, setDescription] = useState(transaction?.description ?? '');
-  const [amount, setAmount] = useState<number | null>(transaction ? transaction.amountMinor / 100 : null);
-  const [kind, setKind] = useState<TransactionKind>(transaction?.kind ?? 'expense');
+  const [date, setDate] = useState<ISODateString>((transaction?.date ?? initialExpense?.date ?? today()) as ISODateString);
+  const [description, setDescription] = useState(transaction?.description ?? initialExpense?.description ?? '');
+  const [amount, setAmount] = useState<number | null>(transaction ? transaction.amountMinor / 100 : initialExpense?.amount ?? null);
+  const [kind, setKind] = useState<TransactionKind>(expenseOnly ? 'expense' : transaction?.kind ?? 'expense');
   const [accountId, setAccountId] = useState(transaction?.accountId ?? accounts[0]?.id ?? '');
-  const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? categories.find((category) => category.id !== 'income')?.id ?? '');
+  const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? initialExpense?.categoryId ?? categories.find((category) => category.id !== 'income')?.id ?? '');
   const [notes, setNotes] = useState(transaction?.notes ?? '');
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -58,9 +67,11 @@ function TransactionForm({
     };
     setSaving(true);
     try {
-      if (transaction) await updateTransaction(transaction.id, {...input, reviewStatus: 'confirmed'});
-      else await createTransaction({...input, source: 'manual'});
-      onClose();
+      const saved = transaction
+        ? await updateTransaction(transaction.id, {...input, reviewStatus: 'confirmed'})
+        : await createTransaction({...input, source: 'manual'});
+      if (onSaved) onSaved(saved);
+      else onClose();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save the transaction.');
     } finally {
@@ -72,7 +83,7 @@ function TransactionForm({
     <form onSubmit={save}>
       <Layout
         header={
-          <DialogHeader
+          inline ? <Heading level={2}>{expenseOnly ? 'Add expense' : transaction ? 'Edit transaction' : 'Add transaction'}</Heading> : <DialogHeader
             title={transaction ? 'Edit transaction' : 'Add transaction'}
             subtitle={transaction ? 'Update the details saved in Koshara.' : 'Record an expense or income manually.'}
             onOpenChange={onClose}
@@ -82,14 +93,14 @@ function TransactionForm({
           <LayoutContent padding={4}>
             <FormLayout>
               <FormLayout direction="horizontal">
-                <DateInput label="Date" value={date} onChange={(value) => value && setDate(value)} isRequired width="100%" />
-                <Selector
+                <DateInput label="Date" value={date} onChange={(value) => value && setDate(value)} format={inline ? 'system_date' : undefined} isRequired width="100%" />
+                {expenseOnly ? null : <Selector
                   label="Type"
                   value={kind}
                   onChange={(value) => setKind(value as TransactionKind)}
                   options={[{value: 'expense', label: 'Expense'}, {value: 'income', label: 'Income'}]}
                   width="100%"
-                />
+                />}
               </FormLayout>
               <TextInput
                 label="Description"
@@ -140,7 +151,7 @@ function TransactionForm({
           <LayoutFooter padding={3}>
             <HStack gap={2} hAlign="end">
               <Button label="Cancel" variant="secondary" onClick={onClose} isDisabled={saving} />
-              <Button label={transaction ? 'Save changes' : 'Add transaction'} variant="primary" type="submit" isLoading={saving} />
+              <Button label={transaction ? 'Save changes' : expenseOnly ? 'Add expense' : 'Add transaction'} variant="primary" type="submit" isLoading={saving} />
             </HStack>
           </LayoutFooter>
         }

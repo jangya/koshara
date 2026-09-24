@@ -1,6 +1,7 @@
 import {NextResponse} from 'next/server';
 
 import {classifyWithJev, type JevRow} from '@/lib/statement-parser/jev';
+import type {JevTrace} from '@/lib/decision/jev-client';
 
 const categories = new Set(['FOOD', 'GROCERIES', 'SHOPPING', 'TRANSPORT', 'UTILITIES', 'RENT', 'EMI', 'TRANSFER', 'SALARY', 'INVESTMENT', 'HEALTHCARE', 'ENTERTAINMENT', 'FEES', 'OTHER']);
 
@@ -20,6 +21,8 @@ export async function POST(request: Request) {
     && (row.knownCategory === undefined || categories.has(row.knownCategory)))) {
     return NextResponse.json({error: 'Invalid transaction rows'}, {status: 400});
   }
-  const decisions = await classifyWithJev(rows);
-  return NextResponse.json({decisions});
+  const debug = request.headers.get('x-koshara-debug') === 'true';
+  const jevTraces: JevTrace[] = [];
+  const decisions = await classifyWithJev(rows, debug ? (trace) => { jevTraces.push(trace); } : undefined);
+  return NextResponse.json({decisions, ...(debug ? {jevTraces} : {})});
 }

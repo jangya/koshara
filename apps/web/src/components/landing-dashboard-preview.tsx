@@ -19,7 +19,7 @@ const categorySpending = [
 const recentTransactions = [
   {description: 'Fresh Market', category: 'Groceries', amount: '−₹2,840'},
   {description: 'Metro Energy', category: 'Utilities', amount: '−₹1,960'},
-  {description: 'Salary credit', category: 'Income', amount: '+₹92,000'},
+  {description: 'Salary credit', category: 'Income', amount: '+₹1,00,000'},
   {description: 'City Fuel', category: 'Transport', amount: '−₹3,240'},
 ] as const;
 
@@ -33,7 +33,7 @@ export function LandingDashboardPreview() {
         <Icon icon={WalletCards} color="accent" />
         <StackItem size="fill">
           <VStack gap={0}>
-            <Text weight="semibold">Mehta household</Text>
+            <Text weight="semibold">Your finances</Text>
             <Text type="supporting" color="secondary">July 2026 overview</Text>
           </VStack>
         </StackItem>
@@ -51,9 +51,9 @@ export function LandingDashboardPreview() {
           </Card>
           <Card padding={4} variant="muted" className="landing-metric">
             <VStack gap={2}>
-              <Text type="supporting" color="secondary">Income</Text>
-              <Heading level={3} type="display-3">₹92,000</Heading>
-              <Text type="supporting" color="secondary">2 credits</Text>
+              <Text type="supporting" color="secondary">Salary income</Text>
+              <Heading level={3} type="display-3">₹1,00,000</Heading>
+              <Text type="supporting" color="secondary">1 credit</Text>
             </VStack>
           </Card>
           <Card padding={4} variant="muted" className="landing-metric">

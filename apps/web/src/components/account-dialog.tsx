@@ -3,6 +3,7 @@
 import {Button} from '@astryxdesign/core/Button';
 import {Dialog, DialogHeader} from '@astryxdesign/core/Dialog';
 import {FormLayout} from '@astryxdesign/core/FormLayout';
+import {Heading} from '@astryxdesign/core/Heading';
 import {Layout, LayoutContent, LayoutFooter} from '@astryxdesign/core/Layout';
 import {Selector} from '@astryxdesign/core/Selector';
 import {HStack} from '@astryxdesign/core/Stack';
@@ -20,7 +21,7 @@ const accountTypeOptions = [
   {value: 'other', label: 'Other'},
 ];
 
-function AccountForm({account, onClose}: {account: Account | null; onClose: () => void}) {
+export function AccountForm({account, onClose, inline = false, onSaved}: {account: Account | null; onClose: () => void; inline?: boolean; onSaved?: (account: Account) => void}) {
   const [name, setName] = useState(account?.name ?? '');
   const [type, setType] = useState<AccountType>(account?.type ?? 'bank');
   const [institution, setInstitution] = useState(account?.institution ?? '');
@@ -42,9 +43,9 @@ function AccountForm({account, onClose}: {account: Account | null; onClose: () =
     setSaving(true);
     try {
       const input = {name, type, institution, lastFour};
-      if (account) await updateAccount(account.id, input);
-      else await createAccount(input);
-      onClose();
+      const saved = account ? await updateAccount(account.id, input) : await createAccount(input);
+      if (onSaved) onSaved(saved);
+      else onClose();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save the account.');
     } finally {
@@ -55,7 +56,7 @@ function AccountForm({account, onClose}: {account: Account | null; onClose: () =
   return (
     <form onSubmit={save}>
       <Layout
-        header={<DialogHeader title={account ? 'Edit account' : 'Add account'} subtitle="Keep only the details needed to identify this account." onOpenChange={onClose} />}
+        header={inline ? <Heading level={2}>{account ? 'Edit account' : 'Add account'}</Heading> : <DialogHeader title={account ? 'Edit account' : 'Add account'} subtitle="Keep only the details needed to identify this account." onOpenChange={onClose} />}
         content={
           <LayoutContent padding={4}>
             <FormLayout>

@@ -34,7 +34,9 @@ describe('rich demo data', () => {
     expect(current.filter(({categoryId}) => categoryId === 'uncategorized').length).toBeGreaterThanOrEqual(3);
     expect(current.filter(({reviewStatus}) => reviewStatus === 'needs_review').length).toBeGreaterThanOrEqual(4);
     expect([...exactFingerprints.values()].some((count) => count > 1)).toBe(true);
-    expect(state.transactions.filter(({description}) => description === 'Salary credit')).toHaveLength(10);
+    const salaries = state.transactions.filter(({description, kind}) => description === 'Salary credit' && kind === 'income');
+    expect(salaries).toHaveLength(10);
+    expect(salaries.every(({amountMinor}) => amountMinor === 10_000_000)).toBe(true);
     expect(state.transactions.filter(({description}) => description === 'House rent')).toHaveLength(10);
   });
 

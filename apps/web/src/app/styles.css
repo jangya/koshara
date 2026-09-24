@@ -76,6 +76,22 @@ body {
   font-family: var(--font-family-body);
 }
 
+.workspace-page {
+  box-sizing: border-box;
+  min-height: 100vh;
+  margin-inline: auto;
+  justify-content: center;
+}
+
+.workspace-page:has([aria-label="Workspace surface"]),
+.workspace-page:has([aria-label="Workspace activity"]) {
+  justify-content: flex-start;
+}
+
+.workspace-composer {
+  background: var(--color-background-surface);
+}
+
 .landing-shell {
   background: var(--color-background-body);
 }
@@ -301,4 +317,8 @@ body {
   .landing-cta {
     transition: none;
   }
+}
+
+.dashboard-composer-page {
+  margin-inline: auto;
 }

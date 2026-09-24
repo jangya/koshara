@@ -1,8 +1,8 @@
 import type {ParsedTransaction} from './types';
+import {askJevChoices, type JevTrace} from '../decision/jev-client';
 
 type Category = NonNullable<ParsedTransaction['classification']>['category'];
 type ChoiceAnswer = {type: 'choice'; choice: string; confidence: number; probabilities: Record<string, number>};
-type Answers = Record<string, ChoiceAnswer>;
 
 const categories: Record<Category, string> = {
   FOOD: 'Restaurants, prepared food, food delivery',
@@ -41,7 +41,7 @@ function choice(answer: unknown, allowed: string[]): ChoiceAnswer | null {
     && value.probabilities && typeof value.probabilities === 'object' ? value as ChoiceAnswer : null;
 }
 
-async function classifyChunk(rows: JevRow[], key: string): Promise<JevDecision[]> {
+async function classifyChunk(rows: JevRow[], onTrace?: (trace: JevTrace) => void): Promise<JevDecision[]> {
   const questions: Record<string, {type: 'choice'; instructions: string; criteria: Record<string, string>}> = {};
   rows.forEach((row, index) => {
     const reference = `rows[${index}]`;
@@ -50,17 +50,9 @@ async function classifyChunk(rows: JevRow[], key: string): Promise<JevDecision[]
     if (row.directionAmbiguous) questions[`direction_${index}`] = {type: 'choice', instructions: `For ${reference}, does money enter or leave the account? Choose UNKNOWN when the row does not say.`, criteria: directions};
     questions[`review_${index}`] = {type: 'choice', instructions: `Does ${reference} need manual review due to uncertain row meaning, amount, category or direction?`, criteria: reviewOptions};
   });
-  const response = await fetch('https://api.typesafe.ai/v1/systemone', {
-    method: 'POST',
-    headers: {Authorization: `Bearer ${key}`, 'Content-Type': 'application/json'},
-    body: JSON.stringify({model: 'jev-latest', state: {rows: rows.map((row) => ({
-      ...row, kind: row.directionAmbiguous ? 'UNKNOWN' : row.kind,
-    }))}, questions}),
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!response.ok) throw new Error(`TypeSafe returned ${response.status}`);
-  const payload = await response.json() as {answers?: Answers};
-  const answers = payload.answers ?? {};
+  const answers = await askJevChoices({
+    rows: rows.map((row) => ({...row, kind: row.directionAmbiguous ? 'UNKNOWN' : row.kind})),
+  }, questions, onTrace) ?? {};
   return rows.map((row, index) => {
     const real = choice(answers[`real_${index}`], Object.keys(realOptions));
     const category = row.knownCategory ? null : choice(answers[`category_${index}`], Object.keys(categories));
@@ -81,14 +73,12 @@ async function classifyChunk(rows: JevRow[], key: string): Promise<JevDecision[]
   });
 }
 
-export async function classifyWithJev(rows: JevRow[]): Promise<JevDecision[]> {
-  const key = process.env.TYPESAFE_API_KEY;
-  if (!key) return rows.map((row) => fallbackDecision(row));
+export async function classifyWithJev(rows: JevRow[], onTrace?: (trace: JevTrace) => void): Promise<JevDecision[]> {
   const decisions: JevDecision[] = [];
   for (let start = 0; start < rows.length; start += chunkSize) {
     const chunk = rows.slice(start, start + chunkSize);
     try {
-      decisions.push(...await classifyChunk(chunk, key));
+      decisions.push(...await classifyChunk(chunk, onTrace));
     } catch {
       decisions.push(...chunk.map((row) => fallbackDecision(row)));
     }

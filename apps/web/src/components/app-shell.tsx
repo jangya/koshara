@@ -9,6 +9,7 @@ import type {ReactNode} from 'react';
 
 const navigation = [
   {href: '/dashboard', label: 'Dashboard'},
+  {href: '/workspace', label: 'Workspace'},
   {href: '/transactions', label: 'Transactions'},
   {href: '/statements', label: 'Statements'},
   {href: '/accounts', label: 'Accounts'},
@@ -25,18 +26,18 @@ export function AppShell({children}: {
         <SideNavHeading
           heading="Koshara"
           headingHref="/dashboard"
-          subheading="Mehta household"
+          subheading="Personal finance"
         />
       }
       footer={
         <VStack gap={1} padding={3}>
-          <Text type="supporting" color="secondary">Local demo workspace</Text>
+          <Text type="supporting" color="secondary">Local workspace</Text>
           <Text type="supporting" color="secondary">₹ INR · Saved on this device</Text>
         </VStack>
       }
       collapsible
     >
-      <SideNavSection title="Household finances" isHeaderHidden>
+      <SideNavSection title="Finances" isHeaderHidden>
         {navigation.map((item) => (
           <SideNavItem
             key={item.href}

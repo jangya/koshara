@@ -42,7 +42,7 @@ function axisCurrency(value: number) {
   return formatMinorCurrencyCompact(value, 'INR');
 }
 
-export function IncomeSpendingChart({state, range}: {state: KosharaState; range: DateRange}) {
+export function IncomeSpendingChart({state, range, disableAnimation = false}: {state: KosharaState; range: DateRange; disableAnimation?: boolean}) {
   const configuration = useSyncExternalStore(subscribeCashflowChart, getCashflowChartConfiguration, () => null);
   const [manualSelection, setManualSelection] = useState<{
     configuration: CashflowChartConfiguration | null;
@@ -52,6 +52,7 @@ export function IncomeSpendingChart({state, range}: {state: KosharaState; range:
   const view = useMemo(() => buildCashflowChartViewModel(state, range, configuration), [configuration, range, state]);
   const isMobile = useMediaQuery('(max-width: 48rem)');
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const animate = !prefersReducedMotion && !disableAnimation;
   const gradientId = useId().replaceAll(':', '');
   const showsIncome = mode !== 'spending';
   const showsSpending = mode !== 'income';
@@ -138,14 +139,14 @@ export function IncomeSpendingChart({state, range}: {state: KosharaState; range:
                   content={(props) => <CashFlowTooltip {...props} mode={mode} comparePreviousPeriod={hasComparison} previousPeriod={view.previousPeriod} hasHighlightedCategories={hasHighlightedCategories} />}
                   cursor={{stroke: chartTokens.grid}}
                   wrapperClassName="dashboard-chart-tooltip"
-                  isAnimationActive={!prefersReducedMotion}
+                  isAnimationActive={animate}
                 />
                 {view.points.filter(({isDateHighlighted}) => isDateHighlighted).map(({key}) => <ReferenceLine key={key} x={key} stroke={chartTokens.highlight} strokeDasharray="var(--spacing-1) var(--spacing-1)" />)}
                 {hasComparison && showsIncome ? <Line type="monotone" dataKey="previousIncomeMinor" name="Previous income" yAxisId="income" stroke={chartTokens.incomePrevious} strokeWidth={2} strokeDasharray="var(--spacing-1) var(--spacing-1)" dot={false} isAnimationActive={false} /> : null}
                 {hasComparison && showsSpending ? <Line type="monotone" dataKey="previousSpendingMinor" name="Previous spending" yAxisId="spending" stroke={chartTokens.spendingPrevious} strokeWidth={2} strokeDasharray="var(--spacing-1) var(--spacing-1)" dot={false} isAnimationActive={false} /> : null}
-                {showsIncome ? <Area type="monotone" dataKey="incomeMinor" name="Income" yAxisId="income" stroke={chartTokens.income} strokeWidth={2} fill={`url(#${gradientId}-income)`} dot={false} isAnimationActive={!prefersReducedMotion} animationDuration={360} /> : null}
-                {showsSpending ? <Area type="monotone" dataKey="spendingMinor" name="Spending" yAxisId="spending" stroke={chartTokens.spending} strokeWidth={2} fill={`url(#${gradientId}-spending)`} dot={false} isAnimationActive={!prefersReducedMotion} animationDuration={360} /> : null}
-                {showsSpending && hasHighlightedCategories ? <Line type="monotone" dataKey="highlightedSpendingMinor" name="Highlighted categories" yAxisId="spending" stroke={chartTokens.highlight} strokeWidth={2} dot={false} isAnimationActive={!prefersReducedMotion} animationDuration={360} /> : null}
+                {showsIncome ? <Area type="monotone" dataKey="incomeMinor" name="Income" yAxisId="income" stroke={chartTokens.income} strokeWidth={2} fill={`url(#${gradientId}-income)`} dot={false} isAnimationActive={animate} animationDuration={360} /> : null}
+                {showsSpending ? <Area type="monotone" dataKey="spendingMinor" name="Spending" yAxisId="spending" stroke={chartTokens.spending} strokeWidth={2} fill={`url(#${gradientId}-spending)`} dot={false} isAnimationActive={animate} animationDuration={360} /> : null}
+                {showsSpending && hasHighlightedCategories ? <Line type="monotone" dataKey="highlightedSpendingMinor" name="Highlighted categories" yAxisId="spending" stroke={chartTokens.highlight} strokeWidth={2} dot={false} isAnimationActive={animate} animationDuration={360} /> : null}
               </AreaChart>
             </ResponsiveContainer>
             <VisuallyHidden as="div" aria-live="polite">{summary}</VisuallyHidden>

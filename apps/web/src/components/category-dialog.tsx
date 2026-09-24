@@ -3,6 +3,7 @@
 import {Button} from '@astryxdesign/core/Button';
 import {Dialog, DialogHeader} from '@astryxdesign/core/Dialog';
 import {FormLayout} from '@astryxdesign/core/FormLayout';
+import {Heading} from '@astryxdesign/core/Heading';
 import {Layout, LayoutContent, LayoutFooter} from '@astryxdesign/core/Layout';
 import {NumberInput} from '@astryxdesign/core/NumberInput';
 import {Selector} from '@astryxdesign/core/Selector';
@@ -27,7 +28,7 @@ const colorOptions: Array<{value: CategoryColor; label: string}> = [
   {value: 'yellow', label: 'Yellow'},
 ];
 
-function CategoryForm({category, categories, onClose}: {category: Category | null; categories: Category[]; onClose: () => void}) {
+export function CategoryForm({category, categories, onClose, inline = false, onSaved}: {category: Category | null; categories: Category[]; onClose: () => void; inline?: boolean; onSaved?: (category: Category) => void}) {
   const [name, setName] = useState(category?.name ?? '');
   const [icon, setIcon] = useState(category?.icon ?? '');
   const [color, setColor] = useState<CategoryColor>(category?.color ?? 'purple');
@@ -51,9 +52,9 @@ function CategoryForm({category, categories, onClose}: {category: Category | nul
     if (validation.errors.name || validation.errors.budgetMinor) return;
     setSaving(true);
     try {
-      if (category) await updateCategory(category.id, validation.value);
-      else await createCategory(validation.value);
-      onClose();
+      const saved = category ? await updateCategory(category.id, validation.value) : await createCategory(validation.value);
+      if (onSaved) onSaved(saved);
+      else onClose();
     } catch (caught) {
       setSubmitError(caught instanceof Error ? caught.message : 'Could not save the category.');
     } finally {
@@ -64,7 +65,7 @@ function CategoryForm({category, categories, onClose}: {category: Category | nul
   return (
     <form onSubmit={save}>
       <Layout
-        header={<DialogHeader title={category ? 'Edit category' : 'Add category'} subtitle="Use broad, reusable household finance categories." onOpenChange={onClose} />}
+        header={inline ? <Heading level={2}>{category ? 'Edit category' : 'Add category'}</Heading> : <DialogHeader title={category ? 'Edit category' : 'Add category'} subtitle="Use broad, reusable household finance categories." onOpenChange={onClose} />}
         content={
           <LayoutContent padding={4}>
             <FormLayout>

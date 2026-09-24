@@ -44,10 +44,12 @@ export function DashboardRecentTransactions({
   rows,
   period,
   allTransactionsHref,
+  showNavigationLink = true,
 }: {
   rows: DashboardRecentTransaction[];
   period: string;
   allTransactionsHref: string;
+  showNavigationLink?: boolean;
 }) {
   const isMobile = useMediaQuery('(max-width: 48rem)');
   const tableRows: RecentRow[] = rows.map((row) => ({
@@ -69,7 +71,7 @@ export function DashboardRecentTransactions({
               <Text type="supporting" color="secondary">{period}</Text>
             </VStack>
           </StackItem>
-          <Link href={allTransactionsHref} isStandalone>View all transactions</Link>
+          {showNavigationLink ? <Link href={allTransactionsHref} isStandalone>View all transactions</Link> : null}
         </HStack>
         {rows.length === 0 ? (
           <EmptyState title="No transactions in this period" description="Choose another period or add a transaction." headingLevel={3} />

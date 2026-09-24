@@ -90,6 +90,7 @@ export interface KosharaState {
   categories: Category[];
   transactions: Transaction[];
   importSessions: ImportSession[];
+  bills?: Array<{id: string; name: string; dueDate: string; amountMinor: number}>;
 }
 
 export interface TransactionInput {

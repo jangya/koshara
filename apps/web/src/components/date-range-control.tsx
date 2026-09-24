@@ -64,23 +64,25 @@ export function DateRangeControl({
   range,
   preset,
   onChange,
+  compact = false,
 }: {
   range: DateRange;
   preset: DateRangePreset;
   onChange: (range: DateRange, preset?: DateRangePreset) => void;
+  compact?: boolean;
 }) {
   const periodLabel = formatDateRange(range);
   const hasHydrated = useHasHydrated();
 
   return (
-    <VStack gap={3}>
+    <VStack gap={compact ? 0 : 3}>
       <HStack gap={3} vAlign="end" wrap="wrap">
-        <StackItem size="fill">
+        {!compact ? <StackItem size="fill">
           <VStack gap={0}>
             <Text type="supporting" color="secondary">Active period</Text>
             <Heading level={2}>{periodLabel}</Heading>
           </VStack>
-        </StackItem>
+        </StackItem> : null}
         <Selector
           label="Date range preset"
           value={preset}
@@ -103,7 +105,7 @@ export function DateRangeControl({
           />
         ) : <Skeleton height="var(--spacing-10)" width="calc(var(--spacing-12) * 4)" />}
       </HStack>
-      <Text type="supporting" color="secondary">All figures and comparisons on this page use {periodLabel}.</Text>
+      {!compact ? <Text type="supporting" color="secondary">All figures and comparisons on this page use {periodLabel}.</Text> : null}
     </VStack>
   );
 }

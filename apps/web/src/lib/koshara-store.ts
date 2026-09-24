@@ -24,6 +24,7 @@ import type {
 } from './koshara-types';
 
 const STORAGE_KEY = 'koshara.finance.v1';
+const LEGACY_HOUSEHOLD_KEY = 'koshara.household.v1';
 export const SIMULATED_WRITE_DELAY_MS = 700;
 const serverSnapshot = createDemoState();
 let snapshot = serverSnapshot;
@@ -123,7 +124,7 @@ function sessionAfterApproval(session: ImportSession, approvedTransactionIds: st
     : {...session, status: 'imported', approvedTransactionIds};
 }
 
-function normalizeState(value: KosharaState): KosharaState {
+function normalizeState(value: KosharaState, seeded = serverSnapshot): KosharaState {
   const categories = [...value.categories];
   const importSessions = Array.isArray(value.importSessions) ? value.importSessions : [];
   demoCategories.forEach((seeded) => {
@@ -133,6 +134,7 @@ function normalizeState(value: KosharaState): KosharaState {
     const legacy = transaction as unknown as {note?: string; source?: string};
     return {
       ...transaction,
+      amountMinor: transaction.kind === 'income' && /\bsalary\b/i.test(transaction.description) ? 10_000_000 : transaction.amountMinor,
       notes: transaction.notes ?? legacy.note ?? '',
       reviewStatus: transaction.reviewStatus ?? 'confirmed',
       source: legacy.source === 'webmcp'
@@ -155,7 +157,7 @@ function normalizeState(value: KosharaState): KosharaState {
       budgetMinor: category.budgetMinor ?? null,
       color: category.color ?? categoryColors[index % categoryColors.length],
     })),
-    transactions: mergeDemoTransactions(transactions, serverSnapshot.transactions),
+    transactions: mergeDemoTransactions(transactions, seeded.transactions),
     importSessions: importSessions.map((session) => {
       const normalized: ImportSession = {
         ...session,
@@ -179,6 +181,7 @@ function normalizeState(value: KosharaState): KosharaState {
       const recovered = sessionAfterApproval(normalized, normalized.approvedTransactionIds);
       return recovered.status === 'ready_for_review' ? recovered : normalized;
     }),
+    bills: Array.isArray(value.bills) ? value.bills : seeded.bills,
   };
 }
 
@@ -227,19 +230,28 @@ function validateCategoryInput(input: CategoryInput, currentId?: string) {
 export function hydrateKosharaStore() {
   if (isHydrated || typeof window === 'undefined') return;
   isHydrated = true;
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored) {
+  // One-time migration from the previously selected demo household to one finance store.
+  const previousHousehold = window.localStorage.getItem(LEGACY_HOUSEHOLD_KEY);
+  const previousKey = previousHousehold === 'iyer' || previousHousehold === 'rao' ? `${STORAGE_KEY}.${previousHousehold}` : STORAGE_KEY;
+  const oldWorkspaceLog = window.localStorage.getItem(`koshara-workspace-log:${previousHousehold ?? 'mehta'}`);
+  if (oldWorkspaceLog && !window.localStorage.getItem('koshara-workspace-log')) window.localStorage.setItem('koshara-workspace-log', oldWorkspaceLog);
+  snapshot = createDemoState();
+  for (const key of new Set([previousKey, STORAGE_KEY])) {
+    const stored = window.localStorage.getItem(key);
+    if (!stored) continue;
     try {
       const parsed = JSON.parse(stored) as KosharaState;
       if (Array.isArray(parsed.accounts) && Array.isArray(parsed.categories) && Array.isArray(parsed.transactions)) {
         snapshot = normalizeState(parsed);
         persist();
-        emit();
+        break;
       }
     } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
+      if (key === STORAGE_KEY) window.localStorage.removeItem(STORAGE_KEY);
     }
   }
+  window.localStorage.removeItem(LEGACY_HOUSEHOLD_KEY);
+  emit();
   window.addEventListener('storage', (event) => {
     if (event.key !== STORAGE_KEY || !event.newValue) return;
     try {
