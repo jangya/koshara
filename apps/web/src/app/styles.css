@@ -1,6 +1,6 @@
-@import '@astryxdesign/core/reset.css';
-@import '@astryxdesign/core/astryx.css';
-@import '@astryxdesign/theme-neutral/theme.css';
+@import "@astryxdesign/core/reset.css";
+@import "@astryxdesign/core/astryx.css";
+@import "@astryxdesign/theme-neutral/theme.css";
 
 html,
 body {
@@ -35,7 +35,8 @@ body {
 }
 
 .dashboard-metric-refresh {
-  animation: dashboard-metric-refresh var(--duration-medium) var(--ease-standard);
+  animation: dashboard-metric-refresh var(--duration-medium)
+    var(--ease-standard);
   border-radius: var(--radius-element);
 }
 
@@ -80,16 +81,31 @@ body {
   box-sizing: border-box;
   min-height: 100vh;
   margin-inline: auto;
-  justify-content: center;
-}
-
-.workspace-page:has([aria-label="Workspace surface"]),
-.workspace-page:has([aria-label="Workspace activity"]) {
   justify-content: flex-start;
 }
 
 .workspace-composer {
   background: var(--color-background-surface);
+}
+
+.workspace-result-scroll {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: min(68vh, calc(var(--spacing-12) * 10));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--spacing-3);
+}
+
+.workspace-result-scroll > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.workspace-activity-detail {
+  overflow-wrap: anywhere;
 }
 
 .landing-shell {
@@ -121,7 +137,10 @@ body {
 .landing-hero {
   background:
     radial-gradient(circle at top, var(--color-accent-muted), transparent 48%),
-    linear-gradient(var(--color-background-surface), var(--color-background-body));
+    linear-gradient(
+      var(--color-background-surface),
+      var(--color-background-body)
+    );
 }
 
 .landing-hero-inner {

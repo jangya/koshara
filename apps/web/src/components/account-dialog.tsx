@@ -6,7 +6,7 @@ import {FormLayout} from '@astryxdesign/core/FormLayout';
 import {Heading} from '@astryxdesign/core/Heading';
 import {Layout, LayoutContent, LayoutFooter} from '@astryxdesign/core/Layout';
 import {Selector} from '@astryxdesign/core/Selector';
-import {HStack} from '@astryxdesign/core/Stack';
+import {HStack, VStack} from '@astryxdesign/core/Stack';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {useState, type FormEvent} from 'react';
 
@@ -21,7 +21,7 @@ const accountTypeOptions = [
   {value: 'other', label: 'Other'},
 ];
 
-export function AccountForm({account, onClose, inline = false, onSaved}: {account: Account | null; onClose: () => void; inline?: boolean; onSaved?: (account: Account) => void}) {
+export function AccountForm({account, onClose, inline = false, embedded = false, onSaved}: {account: Account | null; onClose: () => void; inline?: boolean; embedded?: boolean; onSaved?: (account: Account) => void}) {
   const [name, setName] = useState(account?.name ?? '');
   const [type, setType] = useState<AccountType>(account?.type ?? 'bank');
   const [institution, setInstitution] = useState(account?.institution ?? '');
@@ -53,29 +53,33 @@ export function AccountForm({account, onClose, inline = false, onSaved}: {accoun
     }
   }
 
+  const fields = <FormLayout>
+    <TextInput label="Account name" value={name} onChange={setName} placeholder="HDFC Salary Account" isRequired status={error ? {type: 'error', message: error} : undefined} width="100%" />
+    <Selector label="Account type" value={type} onChange={(value) => setType(value as AccountType)} options={accountTypeOptions} width="100%" />
+    <TextInput label="Institution" value={institution} onChange={setInstitution} placeholder="HDFC Bank" isOptional width="100%" />
+    <TextInput label="Last four digits" value={lastFour} onChange={setLastFour} placeholder="4821" isOptional width="100%" />
+  </FormLayout>;
+  const actions = <HStack gap={2} hAlign="end">
+    <Button label="Cancel" variant="secondary" onClick={onClose} isDisabled={saving} />
+    <Button label={account ? 'Save changes' : 'Add account'} variant="primary" type="submit" isLoading={saving} />
+  </HStack>;
+
   return (
     <form onSubmit={save}>
+      {embedded ? <VStack gap={4} width="100%">
+        <Heading level={2}>{account ? 'Edit account' : 'Add account'}</Heading>
+        {fields}
+        {actions}
+      </VStack> :
       <Layout
         header={inline ? <Heading level={2}>{account ? 'Edit account' : 'Add account'}</Heading> : <DialogHeader title={account ? 'Edit account' : 'Add account'} subtitle="Keep only the details needed to identify this account." onOpenChange={onClose} />}
         content={
-          <LayoutContent padding={4}>
-            <FormLayout>
-              <TextInput label="Account name" value={name} onChange={setName} placeholder="HDFC Salary Account" isRequired status={error ? {type: 'error', message: error} : undefined} width="100%" />
-              <Selector label="Account type" value={type} onChange={(value) => setType(value as AccountType)} options={accountTypeOptions} width="100%" />
-              <TextInput label="Institution" value={institution} onChange={setInstitution} placeholder="HDFC Bank" isOptional width="100%" />
-              <TextInput label="Last four digits" value={lastFour} onChange={setLastFour} placeholder="4821" isOptional width="100%" />
-            </FormLayout>
-          </LayoutContent>
+          <LayoutContent padding={4}>{fields}</LayoutContent>
         }
         footer={
-          <LayoutFooter padding={3}>
-            <HStack gap={2} hAlign="end">
-              <Button label="Cancel" variant="secondary" onClick={onClose} isDisabled={saving} />
-              <Button label={account ? 'Save changes' : 'Add account'} variant="primary" type="submit" isLoading={saving} />
-            </HStack>
-          </LayoutFooter>
+          <LayoutFooter padding={3}>{actions}</LayoutFooter>
         }
-      />
+      />}
     </form>
   );
 }

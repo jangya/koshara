@@ -79,34 +79,34 @@ export function StatementSurface({onComplete}: WorkspaceSurfaceProps) {
 }
 
 export function AccountSurface({onComplete}: WorkspaceSurfaceProps) {
-  return <Section><AccountForm account={null} inline onClose={() => onComplete()}
-    onSaved={(account) => onComplete({title: 'Account added', detail: `${account.name} added to your accounts.`})} /></Section>;
+  return <AccountForm account={null} inline embedded onClose={() => onComplete()}
+    onSaved={(account) => onComplete({title: 'Account added', detail: `${account.name} added to your accounts.`})} />;
 }
 
 export function CategorySurface({onComplete}: WorkspaceSurfaceProps) {
   const {categories} = useKosharaState();
-  return <Section><CategoryForm category={null} categories={categories} inline onClose={() => onComplete()}
-    onSaved={(category) => onComplete({title: 'Category added', detail: `${category.name} added to your categories.`})} /></Section>;
+  return <CategoryForm category={null} categories={categories} inline embedded onClose={() => onComplete()}
+    onSaved={(category) => onComplete({title: 'Category added', detail: `${category.name} added to your categories.`})} />;
 }
 
 export function AccountsSurface() {
   const {accounts} = useKosharaState();
-  return <Section><VStack gap={2}><Heading level={2}>Accounts</Heading><Text color="secondary">{accounts.length} accounts</Text>
+  return <VStack gap={2}><Heading level={2}>Accounts</Heading><Text color="secondary">{accounts.length} accounts</Text>
     <VStack as="ul" gap={0}>{accounts.map((account) => <Item as="li" key={account.id} label={account.name}
       description={account.institution || account.type} endContent={<Text hasTabularNumbers>{formatMinorCurrencySummary(account.balanceMinor, 'INR')}</Text>} />)}</VStack>
-  </VStack></Section>;
+  </VStack>;
 }
 
 export function TransactionsSurface({expensesOnly = false}: WorkspaceSurfaceProps & {expensesOnly?: boolean}) {
   const {transactions, accounts, categories} = useKosharaState();
   const filtered = expensesOnly ? transactions.filter(({kind}) => kind === 'expense') : transactions;
-  return <Section><VStack gap={2}><Heading level={2}>{expensesOnly ? 'Expenses' : 'Transactions'}</Heading>
+  return <VStack gap={2}><Heading level={2}>{expensesOnly ? 'Expenses' : 'Transactions'}</Heading>
     <Text color="secondary">{filtered.length} {expensesOnly ? 'expenses' : 'transactions'} · showing the latest {Math.min(filtered.length, 20)}</Text>
     <VStack as="ul" gap={0}>{filtered.slice(0, 20).map((transaction) => <Item as="li" key={transaction.id}
       label={transaction.description}
       description={`${formatTransactionDate(transaction.date)} · ${categories.find(({id}) => id === transaction.categoryId)?.name ?? 'Uncategorized'} · ${accounts.find(({id}) => id === transaction.accountId)?.name ?? 'Account'}`}
       endContent={<Text hasTabularNumbers>{transaction.kind === 'expense' ? '−' : '+'}{formatMinorCurrencySummary(transaction.amountMinor, 'INR')}</Text>} />)}</VStack>
-  </VStack></Section>;
+  </VStack>;
 }
 
 export function ExpensesSurface(props: WorkspaceSurfaceProps) { return <TransactionsSurface {...props} expensesOnly />; }
@@ -116,5 +116,5 @@ export function WidgetSurface({input}: WorkspaceSurfaceProps) {
 }
 
 export function DashboardBuilderSurface() {
-  return <Section><VStack gap={3}><Heading level={2}>Build dashboard</Heading><Text color="secondary">Create an empty dashboard, add the finance widgets you need, then save it.</Text><Link href="/dashboard?new=1" isStandalone>Create new dashboard</Link></VStack></Section>;
+  return <VStack gap={3}><Heading level={2}>Build dashboard</Heading><Text color="secondary">Create an empty dashboard, add the finance widgets you need, then save it.</Text><Link href="/dashboard?new=1" isStandalone>Create new dashboard</Link></VStack>;
 }
