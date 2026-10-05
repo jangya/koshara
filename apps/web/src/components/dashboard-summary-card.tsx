@@ -19,7 +19,7 @@ function comparisonCopy(metric: DashboardMetric, previousPeriod: string) {
   return `${comparison.percent}% ${comparison.direction} than ${previousPeriod}`;
 }
 
-function useAnimatedMetric(value: number) {
+function useAnimatedMetric(value: number, disableAnimation: boolean) {
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const previousValue = useRef(value);
   const [displayValue, setDisplayValue] = useState(value);
@@ -27,7 +27,7 @@ function useAnimatedMetric(value: number) {
   useEffect(() => {
     const startValue = previousValue.current;
     previousValue.current = value;
-    if (startValue === value || prefersReducedMotion) {
+    if (startValue === value || prefersReducedMotion || disableAnimation) {
       setDisplayValue(value);
       return;
     }
@@ -43,13 +43,13 @@ function useAnimatedMetric(value: number) {
     }
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
-  }, [prefersReducedMotion, value]);
+  }, [disableAnimation, prefersReducedMotion, value]);
 
   return displayValue;
 }
 
-export function DashboardSummaryCard({metric, previousPeriod}: {metric: DashboardMetric; previousPeriod: string}) {
-  const displayValue = useAnimatedMetric(metric.value);
+export function DashboardSummaryCard({metric, previousPeriod, disableAnimation = false}: {metric: DashboardMetric; previousPeriod: string; disableAnimation?: boolean}) {
+  const displayValue = useAnimatedMetric(metric.value, disableAnimation);
   const statusVariant = metric.sentiment === 'positive' ? 'success' : metric.sentiment === 'negative' ? 'warning' : 'neutral';
   const formattedValue = metric.key === 'transactions'
     ? new Intl.NumberFormat('en-IN').format(displayValue)
@@ -57,7 +57,7 @@ export function DashboardSummaryCard({metric, previousPeriod}: {metric: Dashboar
 
   return (
     <Card padding={4} elevation="low" height="100%">
-      <VStack gap={2} key={`${metric.key}-${metric.value}`} className="dashboard-metric-refresh">
+      <VStack gap={2} key={`${metric.key}-${metric.value}`} className={disableAnimation ? undefined : 'dashboard-metric-refresh'}>
         <Text type="supporting" color="secondary">{metric.label}</Text>
         <Text type="display-3" hasTabularNumbers>{formattedValue}</Text>
         <HStack gap={1} vAlign="center">

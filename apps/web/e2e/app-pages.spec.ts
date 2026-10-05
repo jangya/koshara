@@ -60,6 +60,7 @@ test('lets the Dashboard WebMCP tool configure and reset the visible cash-flow c
     });
   });
   await page.goto('/dashboard');
+  await page.getByRole('button', {name: 'Cash flow', exact: true}).click();
 
   await expect.poll(() => page.evaluate(() => {
     const tools = (window as unknown as {__kosharaWebMcpTools: Map<string, unknown>}).__kosharaWebMcpTools;

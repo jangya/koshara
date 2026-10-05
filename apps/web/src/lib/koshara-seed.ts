@@ -91,7 +91,7 @@ function monthlyTransactions(month: SeedMonth, index: number): Transaction[] {
     : [1_780 + index * 25, 1_450 + index * 20, 2_080 + index * 30, 1_290 + index * 15];
   const shoppingSpike = index === 9 ? 12_900 : index === 4 ? 8_450 : 2_490 + (index % 3) * 600;
   const rows: SeedTransactionInput[] = [
-    {key: 'salary', day: 1, description: 'Salary credit', amount: 165_000, accountId: 'hdfc-savings', categoryId: 'income', kind: 'income'},
+    {key: 'salary', day: 1, description: 'Salary credit', amount: 100_000, accountId: 'hdfc-savings', categoryId: 'income', kind: 'income'},
     {key: 'rent', day: 3, description: 'House rent', amount: 34_000, accountId: 'hdfc-savings', categoryId: 'rent'},
     {key: 'sip', day: 4, description: 'Zerodha mutual fund SIP', amount: 15_000, accountId: 'hdfc-savings', categoryId: 'investment'},
     {key: 'self-transfer', day: 5, description: 'Transfer to joint savings', amount: 12_000, accountId: 'hdfc-savings', categoryId: 'transfer'},
@@ -154,6 +154,8 @@ export function mergeDemoTransactions(existing: Transaction[], seeded: Transacti
 export function createDemoState(referenceDate = new Date()): KosharaState {
   const months = seedMonths(referenceDate);
   const currentMonth = months.at(-1)!;
+  const billDue = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate() + 12, 12);
+  const billDueDate = `${billDue.getFullYear()}-${String(billDue.getMonth() + 1).padStart(2, '0')}-${String(billDue.getDate()).padStart(2, '0')}`;
   const legacyCompatibilityTransactions = [
     {...buildSeedTransaction(currentMonth, {key: 'legacy-swiggy', day: 28, description: 'Swiggy', amount: 1_240, accountId: 'icici-card', categoryId: 'dining'}), id: 'tx-01'},
     {...buildSeedTransaction(currentMonth, {key: 'legacy-bigbasket', day: 27, description: 'BigBasket', amount: 3_480, accountId: 'hdfc-savings', categoryId: 'groceries'}), id: 'tx-02'},
@@ -163,5 +165,6 @@ export function createDemoState(referenceDate = new Date()): KosharaState {
     categories: demoCategories.map((category) => ({...category})),
     transactions: [...months.flatMap(monthlyTransactions), ...legacyCompatibilityTransactions],
     importSessions: [],
+    bills: [{id: 'electricity', name: 'Electricity', dueDate: billDueDate, amountMinor: 2_800_00}],
   };
 }

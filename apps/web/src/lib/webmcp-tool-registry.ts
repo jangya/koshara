@@ -49,7 +49,7 @@ export const KOSHARA_WEBMCP_TOOL_GROUPS = [
   {label: 'Categories', names: ['list_categories', 'create_category', 'update_category', 'delete_category']},
   {label: 'Transactions', names: ['search_transactions', 'get_transaction', 'validate_transaction', 'check_transactions', 'find_possible_duplicates', 'create_transaction', 'create_transactions', 'update_transaction', 'delete_transaction']},
   {label: 'Insights', names: ['get_spending_summary']},
-  {label: 'Chart presentation', names: ['configure_cashflow_chart', 'configure_category_spending_chart']},
+  {label: 'Dashboard presentation', names: ['configure_cashflow_chart', 'configure_category_spending_chart']},
 ] as const;
 
 const emptySchema = {type: 'object', properties: {}, additionalProperties: false};
@@ -1036,7 +1036,7 @@ const pageContexts: Array<{matches: (pathname: string) => boolean; label: string
     label: 'Dashboard',
     groups: [
       {label: 'Dashboard insights', names: ['get_spending_summary', 'search_transactions', 'get_accounts', 'list_categories']},
-      {label: 'Chart presentation', names: ['configure_cashflow_chart', 'configure_category_spending_chart']},
+      {label: 'Dashboard presentation', names: ['configure_cashflow_chart', 'configure_category_spending_chart']},
     ],
   },
   {

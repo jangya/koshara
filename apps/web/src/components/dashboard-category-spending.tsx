@@ -41,10 +41,12 @@ function CategoryTooltip({active, payload, total}: TooltipContentProps & {total:
   );
 }
 
-export function DashboardCategorySpending({state, range, preset}: {
+export function DashboardCategorySpending({state, range, preset, disableAnimation = false, showNavigationLink = true}: {
   state: KosharaState;
   range: DateRange;
   preset: DateRangePreset;
+  disableAnimation?: boolean;
+  showNavigationLink?: boolean;
 }) {
   const configuration = useSyncExternalStore(
     subscribeCategorySpendingChart,
@@ -68,7 +70,7 @@ export function DashboardCategorySpending({state, range, preset}: {
               <Text type="supporting" color="secondary">Share of categorized spending · {view.period}</Text>
             </VStack>
           </StackItem>
-          <Link href={`/categories?from=${view.range.start}&to=${view.range.end}&range=${chartPreset}`} isStandalone>Explore categories</Link>
+          {showNavigationLink ? <Link href={`/categories?from=${view.range.start}&to=${view.range.end}&range=${chartPreset}`} isStandalone>Explore categories</Link> : null}
         </HStack>
         {configuration ? (
           <VStack gap={2}>
@@ -89,7 +91,7 @@ export function DashboardCategorySpending({state, range, preset}: {
             <VStack className="dashboard-category-pie-chart" width="100%">
               <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <PieChart accessibilityLayer>
-                  <Pie data={view.points} dataKey="value" nameKey="name" innerRadius="52%" outerRadius="82%" paddingAngle={2} isAnimationActive={!prefersReducedMotion}>
+                  <Pie data={view.points} dataKey="value" nameKey="name" innerRadius="52%" outerRadius="82%" paddingAngle={2} isAnimationActive={!prefersReducedMotion && !disableAnimation}>
                     {view.points.map((point) => (
                       <Cell
                         key={point.categoryId}

@@ -12,7 +12,7 @@ The public landing page is `/`. The application shell contains five local routes
 
 - `/dashboard`: balances, cash flow, recent activity, and spending attention.
 - `/transactions`: searchable and editable transaction ledger.
-- `/statements`: AI-assisted staging and human review of proposed statement rows.
+- `/statements`: local PDF parsing or WebMCP-assisted staging, followed by the same human review of proposed rows.
 - `/accounts`: local financial account management.
 - `/categories`: category budgets and spending analytics.
 
@@ -39,7 +39,11 @@ This storage is intentionally single-browser and single-user. Clearing site data
 
 The tool layer validates required fields, enums, dates, positive amounts, references, confidence values, and duplicate candidates before calling the store. Statement import is deliberately staged: an agent proposes rows and groups, while the person reviews and approves them in the UI.
 
-Koshara does not upload a statement or call an AI model itself. A compatible external agent reads the statement under that agent's own data policy, then calls Koshara's structured tools.
+The browser PDF path uses `pdfjs-dist` to read positional text items page by page, then sends those items to a dedicated parser worker. The worker groups lines, identifies dated transaction rows by column position, and reconciles extracted totals when the PDF provides usable balance or total figures. The resulting `TransactionInput[]` is passed to the same `createStatementImportSession` and `stageImportTransactions` store functions used by WebMCP. The store remains responsible for duplicate detection, review status, merge proposals, and approval. No PDF bytes or extracted page text are persisted. A compact reconciliation summary, parse count, source page references, and staged transaction fields are saved with the existing local import session.
+
+PDF rows begin in Needs attention without a category. Choosing a category does not approve the row; each PDF row requires an explicit Approve row action before it becomes Ready. Editing a material field reopens review. Existing WebMCP staging behavior is unchanged.
+
+Koshara's local PDF parser does not upload a statement or call an AI model. The separate WebMCP path still lets a compatible external agent read a statement under that agent's own data policy and call Koshara's structured tools.
 
 ## Deliberately deferred
 

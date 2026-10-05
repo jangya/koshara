@@ -3,10 +3,11 @@
 import {Button} from '@astryxdesign/core/Button';
 import {Dialog, DialogHeader} from '@astryxdesign/core/Dialog';
 import {FormLayout} from '@astryxdesign/core/FormLayout';
+import {Heading} from '@astryxdesign/core/Heading';
 import {Layout, LayoutContent, LayoutFooter} from '@astryxdesign/core/Layout';
 import {NumberInput} from '@astryxdesign/core/NumberInput';
 import {Selector} from '@astryxdesign/core/Selector';
-import {HStack} from '@astryxdesign/core/Stack';
+import {HStack, VStack} from '@astryxdesign/core/Stack';
 import {Text} from '@astryxdesign/core/Text';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {useState, type FormEvent} from 'react';
@@ -27,7 +28,7 @@ const colorOptions: Array<{value: CategoryColor; label: string}> = [
   {value: 'yellow', label: 'Yellow'},
 ];
 
-function CategoryForm({category, categories, onClose}: {category: Category | null; categories: Category[]; onClose: () => void}) {
+export function CategoryForm({category, categories, onClose, inline = false, embedded = false, onSaved}: {category: Category | null; categories: Category[]; onClose: () => void; inline?: boolean; embedded?: boolean; onSaved?: (category: Category) => void}) {
   const [name, setName] = useState(category?.name ?? '');
   const [icon, setIcon] = useState(category?.icon ?? '');
   const [color, setColor] = useState<CategoryColor>(category?.color ?? 'purple');
@@ -51,9 +52,9 @@ function CategoryForm({category, categories, onClose}: {category: Category | nul
     if (validation.errors.name || validation.errors.budgetMinor) return;
     setSaving(true);
     try {
-      if (category) await updateCategory(category.id, validation.value);
-      else await createCategory(validation.value);
-      onClose();
+      const saved = category ? await updateCategory(category.id, validation.value) : await createCategory(validation.value);
+      if (onSaved) onSaved(saved);
+      else onClose();
     } catch (caught) {
       setSubmitError(caught instanceof Error ? caught.message : 'Could not save the category.');
     } finally {
@@ -61,54 +62,58 @@ function CategoryForm({category, categories, onClose}: {category: Category | nul
     }
   }
 
+  const fields = <FormLayout>
+    <TextInput
+      label="Category name"
+      value={name}
+      onChange={setName}
+      placeholder="Groceries"
+      isRequired
+      status={showValidation && validation.errors.name ? {type: 'error', message: validation.errors.name} : undefined}
+      width="100%"
+    />
+    <TextInput label="Icon" value={icon} onChange={setIcon} placeholder="Optional symbol" isOptional width="100%" />
+    <Selector label="Color" value={color} onChange={(value) => setColor(value as CategoryColor)} options={colorOptions} width="100%" />
+    {budgetEligible ? (
+      <NumberInput
+        label="Monthly spending limit"
+        description="Optional. Clear the field to remove an existing limit."
+        value={budgetRupees}
+        onChange={(value) => setBudgetRupees(value)}
+        min={0}
+        step={100}
+        units="INR"
+        hasClear
+        isOptional
+        status={showValidation && validation.errors.budgetMinor ? {type: 'error', message: validation.errors.budgetMinor} : undefined}
+        width="100%"
+      />
+    ) : (
+      <Text type="supporting" color="secondary">Monthly spending limits are not used for Income, Transfer, or Investment.</Text>
+    )}
+    {submitError ? <Text type="supporting">{submitError}</Text> : null}
+  </FormLayout>;
+  const actions = <HStack gap={2} hAlign="end">
+    <Button label="Cancel" variant="secondary" onClick={onClose} isDisabled={saving} />
+    <Button label={category ? 'Save changes' : 'Add category'} variant="primary" type="submit" isLoading={saving} />
+  </HStack>;
+
   return (
     <form onSubmit={save}>
+      {embedded ? <VStack gap={4} width="100%">
+        <Heading level={2}>{category ? 'Edit category' : 'Add category'}</Heading>
+        {fields}
+        {actions}
+      </VStack> :
       <Layout
-        header={<DialogHeader title={category ? 'Edit category' : 'Add category'} subtitle="Use broad, reusable household finance categories." onOpenChange={onClose} />}
+        header={inline ? <Heading level={2}>{category ? 'Edit category' : 'Add category'}</Heading> : <DialogHeader title={category ? 'Edit category' : 'Add category'} subtitle="Use broad, reusable household finance categories." onOpenChange={onClose} />}
         content={
-          <LayoutContent padding={4}>
-            <FormLayout>
-              <TextInput
-                label="Category name"
-                value={name}
-                onChange={setName}
-                placeholder="Groceries"
-                isRequired
-                status={showValidation && validation.errors.name ? {type: 'error', message: validation.errors.name} : undefined}
-                width="100%"
-              />
-              <TextInput label="Icon" value={icon} onChange={setIcon} placeholder="Optional symbol" isOptional width="100%" />
-              <Selector label="Color" value={color} onChange={(value) => setColor(value as CategoryColor)} options={colorOptions} width="100%" />
-              {budgetEligible ? (
-                <NumberInput
-                  label="Monthly spending limit"
-                  description="Optional. Clear the field to remove an existing limit."
-                  value={budgetRupees}
-                  onChange={(value) => setBudgetRupees(value)}
-                  min={0}
-                  step={100}
-                  units="INR"
-                  hasClear
-                  isOptional
-                  status={showValidation && validation.errors.budgetMinor ? {type: 'error', message: validation.errors.budgetMinor} : undefined}
-                  width="100%"
-                />
-              ) : (
-                <Text type="supporting" color="secondary">Monthly spending limits are not used for Income, Transfer, or Investment.</Text>
-              )}
-              {submitError ? <Text type="supporting">{submitError}</Text> : null}
-            </FormLayout>
-          </LayoutContent>
+          <LayoutContent padding={4}>{fields}</LayoutContent>
         }
         footer={
-          <LayoutFooter padding={3}>
-            <HStack gap={2} hAlign="end">
-              <Button label="Cancel" variant="secondary" onClick={onClose} isDisabled={saving} />
-              <Button label={category ? 'Save changes' : 'Add category'} variant="primary" type="submit" isLoading={saving} />
-            </HStack>
-          </LayoutFooter>
+          <LayoutFooter padding={3}>{actions}</LayoutFooter>
         }
-      />
+      />}
     </form>
   );
 }
